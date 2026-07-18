@@ -8,6 +8,7 @@
   (reset-project-registries)
   (linacs.core:register-provider :test-provider :for :test-feature
     (lambda (facts)
+      (declare (ignore facts))
       (list (list :action :copy-file :from "test.txt" :to "/tmp/test.txt"))))
 
   (linacs.core:define-feature :test-feature

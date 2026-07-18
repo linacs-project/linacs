@@ -16,6 +16,7 @@
     :description "Prerequisite feature"
     :requires :dependency-feature)
 
-  (let ((graph (linacs.core:resolve-feature-graph (list :test-feature)))))
+  (let ((graph (linacs.core:resolve-feature-graph (list :test-feature))))
+    (it.bese.fiveam:is (and graph (listp graph))))
 
   (reset-project-registries))
