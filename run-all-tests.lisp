@@ -39,11 +39,12 @@
 (load "tests/features/graph.lisp")
 (format t "Features tests loaded~%")
 
-(format t "Loading pipeline tests...~%")
-(load "tests/pipeline/execution.lisp")
-(format t "Pipeline tests loaded~%")
+ (format t "Loading pipeline tests...~%")
+  (load "tests/pipeline/execution.lisp")
+  (load "tests/pipeline/disabled-actions.lisp")
+  (format t "Pipeline tests loaded~%")
 
-(format t "Loading executor tests...~%")
+  (format t "Loading executor tests...~%")
 (load "tests/executors/copy-file.lisp")
 (load "tests/executors/ensure-dir.lisp")
 (load "tests/executors/symlink.lisp")

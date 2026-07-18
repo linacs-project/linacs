@@ -84,7 +84,10 @@ DISCOVER-PLUGINS / DISCOVER-PROJECT). EXECUTE-MODE is :apply, :check, or
           (let ((prune (member :prune-explicitly-disabled (getf home :traits))))
             (dolist (action ordered)
               (if (and (getf action :disabled) prune)
-                  (execute-action action :mode :remove)
+                  ;; Pruning disabled actions: respect execute-mode
+                  (if (eq execute-mode :apply)
+                      (execute-action action :mode :remove)
+                      (execute-action action :mode :check))
                   (unless (getf action :disabled)
                     (execute-action action :mode execute-mode))))))
 
