@@ -59,12 +59,41 @@ matching system names, skipping linacs and linacs/tests themselves."
   (let ((candidates '()))
     (ignore-errors
       (dolist (name (asdf:registered-systems))
-        (when (and (>= (length name) 4)
-                   (string= name "linacs-" :end1 4)
-                   (not (string= name "linacs-tests")))
+      (when (and (>= (length name) 7)
+                  (string= name "linacs-" :end1 7)
+                  (not (string= name "linacs-tests")))
           (pushnew name candidates :test #'string=))))
     (dolist (name candidates)
       (linacs.log:info "Loading plugin system ~a" name)
       (handler-case (asdf:load-system name)
         (error (e) (linacs.log:warn* "Failed to load plugin ~a: ~a" name e))))
     candidates))
+
+(defun discover-project-plugins (root)
+  "Discover plugin ASDF systems under ROOT/plugins/*/ that match the
+linacs-* naming convention, and load them.  This bridges the gap between
+a user checking a plugin into their project (as a git submodule or a
+plain checkout) and the ASDF discovery mechanism that expects systems
+to be registered in the source registry.
+
+Third-party plugins that are installed via Quicklisp or registered in
+ASDF's source registry are handled separately by DISCOVER-PLUGINS and
+don't need this path."
+  (let ((plugins-dir (merge-pathnames "plugins/" (uiop:ensure-directory-pathname root))))
+    (when (uiop:directory-exists-p plugins-dir)
+      (dolist (sub (sort (uiop:subdirectories plugins-dir) #'string< :key #'namestring))
+        (dolist (asd (uiop:directory-files sub "*.asd"))
+          (let ((system-name (string-downcase (pathname-name asd))))
+            (when (and (>= (length system-name) 7)
+                       (string= system-name "linacs-" :end1 7))
+              (linacs.log:debug* "Loading project-local plugin ~a from ~a" system-name asd)
+              (handler-case
+                  (progn
+                    ;; Load the .asd in ASDF's package so defsystem is available,
+                    ;; then load the system so its register-* forms take effect.
+                    (let ((*package* (find-package :asdf-user)))
+                      (load asd :verbose nil))
+                    (asdf:load-system system-name))
+                (error (e)
+                  (linacs.log:warn* "Failed to load project-local plugin ~a: ~a"
+                                    system-name e))))))))))

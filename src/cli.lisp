@@ -83,6 +83,7 @@ never notices this; a persistent one does."
   (reset-project-registries)
   (default-fact-probers)
   (discover-plugins)
+  (discover-project-plugins (cli-opts-root opts))
   (discover-project (cli-opts-root opts)))
 
 (defmacro with-cli-error-report (&body body)
