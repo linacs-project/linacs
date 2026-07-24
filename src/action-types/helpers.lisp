@@ -58,19 +58,80 @@ runs `sudo linacs` out of habit; linacs itself never asks you to."
                                     :output '(:string :stripped t)))
     :radix 8)))
 
+(defun read-sudo-password-visible ()
+  "Read password from *query-io* with echo ON.
+Used as a fallback when the terminal cannot be manipulated
+(e.g. no TTY, or sb-posix unavailable)."
+  (format *query-io* "[sudo] password for ~a (will be visible): "
+          (or (uiop:getenv "USER") "root"))
+  (finish-output *query-io*)
+  (string-trim '(#\Newline) (read-line *query-io* nil "")))
+
+(defun read-sudo-password ()
+  "Prompt for and read a sudo password with terminal echo disabled.
+Operates directly on SBCL's own terminal fd via sb-posix:tcsetattr,
+avoiding the need for any child-process terminal access.
+
+Falls back to READ-SUDO-PASSWORD-VISIBLE when no TTY is available or
+when the terminal-manipulation calls fail (e.g. sb-posix contrib not
+built, or running in a CI environment)."
+  (if (plusp (sb-unix:unix-isatty 0))
+      (handler-case
+          (progn
+            (require :sb-posix)
+            (let* ((orig (sb-posix:tcgetattr 0))
+                   (noecho (sb-posix:tcgetattr 0)))
+              (setf (sb-posix:termios-lflag noecho)
+                    (logandc2 (sb-posix:termios-lflag noecho) sb-posix:echo))
+              (sb-posix:tcsetattr 0 sb-posix:tcsanow noecho)
+              (unwind-protect
+                   (progn
+                     (format *query-io* "[sudo] password for ~a: "
+                             (or (uiop:getenv "USER") "root"))
+                     (finish-output *query-io*)
+                     (string-trim '(#\Newline) (read-line *query-io* nil "")))
+                (sb-posix:tcsetattr 0 sb-posix:tcsanow orig)
+                (terpri *query-io*)
+                (finish-output *query-io*))))
+        (error ()
+          (read-sudo-password-visible)))
+      (read-sudo-password-visible)))
+
 (defun run-privileged (args)
-  "Run a command, prefixing with sudo unless already privileged. Signals
-EXECUTION-FAILURE if the command (sudo-escalated or not) actually exits
-non-zero -- a failed sudo prompt (wrong password, no TTY, cancelled) is a
-real error, not something to silently treat as \"nothing needed to
-change\"."
-  (let* ((cmd (if (privileged-p) args (cons "sudo" args)))
-         (exit-code (nth-value 2 (uiop:run-program cmd :output t :error-output t :ignore-error-status t))))
-    (unless (zerop exit-code)
-      (error 'execution-failure :action-type :privileged-command
-             :target (format nil "~{~a~^ ~}" args)
-             :underlying (format nil "Command exited with status ~d." exit-code)))
-    exit-code))
+  "Run a command, prefixing with sudo unless already privileged.
+
+Credentials are validated before the actual command runs:
+  1. Try `sudo -n true` -- if cached credentials exist, skip prompting.
+  2. Otherwise prompt for a password (echo off when possible) and cache
+     it via `sudo -S true`.
+  3. Run the real command with `sudo -n <args>` (no prompt, cached).
+
+Signals EXECUTION-FAILURE if the command exits non-zero -- a wrong
+password, a failed sudo prompt, or a command that genuinely fails are
+all treated as hard errors (no automatic retry, no fallback)."
+  (let* ((needs-sudo-p (not (privileged-p))))
+    (when needs-sudo-p
+      (unless (zerop (nth-value 2
+                      (uiop:run-program (list "sudo" "-n" "true")
+                                        :ignore-error-status t)))
+        (let ((password (read-sudo-password)))
+          (unless (zerop (nth-value 2
+                          (uiop:run-program (list "sudo" "-S" "true")
+                                            :input (make-string-input-stream
+                                                    (format nil "~a~%" password))
+                                            :ignore-error-status t)))
+            (error 'execution-failure :action-type :privileged-command
+                   :target "credential validation"
+                   :underlying (format nil "sudo -S true failed -- wrong password?"))))))
+    (let* ((cmd (if needs-sudo-p (cons "sudo" (cons "-n" args)) args))
+           (exit-code (nth-value 2
+                        (uiop:run-program cmd :output t :error-output t
+                                          :ignore-error-status t))))
+      (unless (zerop exit-code)
+        (error 'execution-failure :action-type :privileged-command
+               :target (format nil "~{~a~^ ~}" args)
+               :underlying (format nil "Command exited with status ~d." exit-code)))
+      exit-code)))
 
 (defun ensure-directories-with-escalation (dir)
   "Ensure DIR (and its parents) exist. Tries as the invoking user first;

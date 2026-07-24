@@ -88,6 +88,7 @@
    #:preflight-notice
 
    ;; helpers
+   #:read-sudo-password
    #:shell-ok-p
    #:which
    #:report
