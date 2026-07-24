@@ -71,6 +71,7 @@
    #:execute-action
    #:dedup-actions
    #:order-actions
+   #:register-package-via-handler
 
    ;; secrets / templates
    #:resolve-secret
@@ -83,7 +84,13 @@
 
    ;; privilege
    #:privileged-p
+   #:run-privileged
    #:preflight-notice
+
+   ;; helpers
+   #:shell-ok-p
+   #:which
+   #:report
 
    ;; discovery
    #:discover-project

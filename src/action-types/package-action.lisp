@@ -126,23 +126,45 @@ than asking for it up front."
          (flatpak-run action (list "flatpak" "uninstall" "-y" (flatpak-scope-flag action) name)))
        (report :removed :target name)))))
 
+;;; --- Via-handler registry ------------------------------------------------
+;;;
+;;; Plugins register custom dispatch logic for new :via values (e.g.
+;;; :toolbox, :rpm-ostree) without modifying core.  A handler receives
+;;; (ACTION NAME &KEY MODE) where NAME is already resolved to a string.
+
+(defvar *package-via-handlers* (make-hash-table :test 'eq)
+  "Maps via keyword → handler function.  Handler: (action name &key mode)")
+
+(defun register-package-via-handler (via handler)
+  "Register HANDLER for :via VIA."
+  (setf (gethash via *package-via-handlers*) handler))
+
+(defun find-package-via-handler (via)
+  "Look up a handler for :via VIA.  Returns the handler or NIL."
+  (gethash via *package-via-handlers*))
+
 ;;; --- Dispatch ------------------------------------------------------------
 
 (defun execute-package (action &key mode)
   (let* ((via (getf action :via :system))
-         (name (resolved-package-name action)))
-    (if (eq via :flatpak)
-        (execute-flatpak-package action name :mode mode)
-        (let ((installed (package-installed-p via name)))
-          (case mode
-            (:check (report (if installed :unchanged :would-change) :target name))
-            (:apply
-             (unless installed
-               (run-privileged (install-command via name)))
-             (report (if installed :unchanged :changed) :target name))
-            (:remove
-             (when installed (run-privileged (uninstall-command via name)))
-             (report :removed :target name)))))))
+         (name (resolved-package-name action))
+         (handler (find-package-via-handler via)))
+    (cond
+      ((eq via :flatpak)
+       (execute-flatpak-package action name :mode mode))
+      (handler
+       (funcall handler action name :mode mode))
+      (t
+       (let ((installed (package-installed-p via name)))
+         (case mode
+           (:check (report (if installed :unchanged :would-change) :target name))
+           (:apply
+            (unless installed
+              (run-privileged (install-command via name)))
+            (report (if installed :unchanged :changed) :target name))
+           (:remove
+            (when installed (run-privileged (uninstall-command via name)))
+            (report :removed :target name))))))))
 
 (register-action-type :package #'execute-package
                       :description "Install a package via the system package manager, pip, npm, or Flatpak")

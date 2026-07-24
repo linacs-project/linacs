@@ -13,7 +13,7 @@ LINACS is a project that allows users to declaratively define their Linux home e
 - **Idempotent Actions**: Every action is designed to be idempotent
 - **Auto-Discovery**: Automatically discovers features, providers, catalogs, and action types
 - **Fact-Based**: Automatically detects your system (OS, GPU, laptop/desktop, etc.)
-- **Extensible**: Easy to add new features, providers, and action types via plugins
+- **Extensible**: Easy to add new features, providers, action types, and `:via` handlers via plugins
 
 ## Quick Start
 

@@ -579,13 +579,19 @@ extensible and where it's registered:
 | A distro package-name mapping | `register-catalog` | a project's `catalogs/*.lisp` |
 | A new probed fact | `register-fact-prober` | a project's `providers/*.lisp` |
 | Cross-cutting behavior (audit logging, a confirmation prompt) | `register-pipeline-hook` | a project's `hooks/*.lisp` |
+| A new `:via` handler for the `:package` action type | `register-package-via-handler` | a plugin, or a project's `providers/*.lisp` |
 | A template renderer | a `RENDER-*` function | a project's `templates/*.lisp` |
 | **A genuinely new action type** (rare — `:command` covers most cases) | `register-action-type` | a plugin, or a change to `src/action-types/` if it belongs in the core |
 
-That last one is the only extension point that touches me rather than a
-project. A new action type is a function of `(action &key mode)` handling
+The last two are the extension points that touch me rather than a project.
+A new action type is a function of `(action &key mode)` handling
 `:apply`/`:check`/`:remove`, plus one `register-action-type` call with a
-`:description`. Look at any file in `src/action-types/` as a template —
+`:description`. A new `:via` handler for `:package` is a function of
+`(action name &key mode)` where `name` is already resolved to a string,
+plus one `register-package-via-handler` call — for example, the
+`linacs-fedora` plugin registers `:toolbox` and `:rpm-ostree` handlers so
+`(package :ripgrep :via :toolbox)` works transparently. Look at any file
+in `src/action-types/` as a template for a full action type;
 `command.lisp` is the simplest complete example.
 
 ---
@@ -840,6 +846,21 @@ remote automatically if it isn't configured yet. Both are overridable:
 A plan containing only `:scope :user` Flatpak installs never triggers the
 "needs root" preflight check that a `:system`-scope package would — I
 only ask for privileges I actually intend to use.
+
+**Plugin-provided `:via` options.** Plugins can register new `:via`
+handlers for the `:package` action using `register-package-via-handler`.
+For example, the `linacs-fedora` plugin adds `:via :toolbox` and
+`:via :rpm-ostree`:
+
+```lisp
+(package :ripgrep :via :toolbox)
+(package :docker :via :rpm-ostree)
+```
+
+These work exactly like the built-in `:via` options — the same
+idempotency, the same `:disabled t` removal semantics, the same
+dependencies. No core changes needed; just load the plugin and use the
+keyword.
 
 **Marked for removal:**
 
