@@ -6,7 +6,8 @@
 (format t "Dependencies loaded~%")
 
 (format t "Loading linacs...~%")
-(load "linacs.asd")
+(require :asdf)
+(push (truename ".") asdf:*central-registry*)
 (asdf:load-system :linacs)
 (format t "linacs loaded~%")
 

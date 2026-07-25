@@ -10,7 +10,8 @@
 (format t "Dependencies loaded~%")
 
 (format t "Loading linacs...~%")
-(load "linacs.asd")
+(require :asdf)
+(push (truename ".") asdf:*central-registry*)
 (asdf:load-system :linacs)
 (format t "linacs loaded~%")
 
@@ -54,6 +55,22 @@
 (load "tests/actions/dedup.lisp")
 (load "tests/actions/ordering.lisp")
 (format t "Action tests loaded~%")
+
+(format t "Loading facts schema tests...~%")
+(load "tests/facts/schema.lisp")
+(format t "Facts schema tests loaded~%")
+
+(format t "Loading profile metadata tests...~%")
+(load "tests/profiles/metadata.lisp")
+(format t "Profile metadata tests loaded~%")
+
+(format t "Loading privilege tests...~%")
+(load "tests/privilege/basics.lisp")
+(format t "Privilege tests loaded~%")
+
+(format t "Loading CLI flag parsing tests...~%")
+(load "tests/cli/flag-parsing.lisp")
+(format t "CLI flag parsing tests loaded~%")
 
 (format t "~%Loading main test file...~%")
 (load "tests/actions/identity.lisp")

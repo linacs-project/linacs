@@ -39,15 +39,17 @@
    #:specify-renderer #:treat-as-static
 
    ;; facts / profiles
-   #:register-fact-prober
-   #:probe-all-facts
-   #:fact
-   #:fact-known-p
-   #:*facts*
-   #:*fact-metadata*
-   #:define-profile
-   #:*profiles*
-   #:apply-profile
+    #:register-fact-prober
+    #:probe-all-facts
+    #:fact
+    #:fact-known-p
+    #:*facts*
+    #:*fact-probers*
+    #:*fact-metadata*
+    #:default-fact-probers
+    #:define-profile
+    #:*profiles*
+    #:apply-profile
 
    ;; catalogs
    #:define-catalog
@@ -55,12 +57,13 @@
    #:catalog-lookup
 
    ;; features / providers
-   #:define-feature
-   #:*feature-registry*
-   #:register-provider
-   #:find-provider
-   #:find-providers-for
-   #:resolve-feature-graph
+    #:define-feature
+    #:*feature-registry*
+    #:register-provider
+    #:find-provider
+    #:find-providers-for
+    #:resolve-feature-graph
+    #:select-provider
 
    ;; actions
    #:make-action
@@ -85,9 +88,14 @@
    #:*pipeline-hooks*
 
    ;; privilege
-   #:privileged-p
-   #:run-privileged
-   #:preflight-notice
+    #:privileged-p
+    #:run-privileged
+    #:preflight-notice
+    #:action-needs-privilege-p
+    #:sudo-n-or-a-prefix
+    #:*sudo-askpass*
+    #:apply-sudo-password-stdin
+    #:sudo-reset-after-run
 
    ;; helpers
    #:read-sudo-password
@@ -131,7 +139,22 @@
    #:*current-home-traits*
 
    ;; cli
-   #:main))
+   #:main
+   #:parse-args
+   #:cli-opts
+   #:make-cli-opts
+   #:cli-opts-root
+   #:cli-opts-platform
+   #:cli-opts-profile
+   #:cli-opts-provider-overrides
+   #:cli-opts-dry-run
+   #:cli-opts-continue-on-error
+   #:cli-opts-output
+   #:cli-opts-verbosity
+   #:cli-opts-quiet
+   #:cli-opts-sudo-password-stdin
+   #:cli-opts-sudo-reset
+   #:cli-opts-help))
 
 (defpackage :linacs-templates
   (:use :cl)

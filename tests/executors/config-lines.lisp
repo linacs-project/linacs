@@ -5,5 +5,7 @@
 
 (def-test config-lines-identity ()
   "Config-lines action has correct identity"
-  (it.bese.fiveam:is (equal (linacs.core:action-identity '(:action :config-lines :target "~/.config/app/config" :ensure ("key = value")))
-                             '(:config-lines (:ensure "key = value") (:remove nil) "~/.config/app/config"))))
+  (let ((identity (linacs.core:action-identity '(:action :config-lines :target "~/.config/app/config" :ensure ("key = value")))))
+    (is (eq (first identity) :config-lines))
+    (is (equal (second identity) '((:ensure "key = value") (:remove))))
+    (is (string= (third identity) "~/.config/app/config"))))
