@@ -95,22 +95,32 @@ never notices this; a persistent one does."
        (linacs.log:error* "Unexpected error: ~a" e)
        (uiop:quit 1))))
 
+(defparameter *print-table-max-width* 60
+  "Maximum column width for PRINT-TABLE; longer cells are truncated.")
+
 (defun print-table (headers rows)
   "Print a simple aligned table (a list of HEADERS strings, then each row
 in ROWS as a list of strings, one per column) with a dashed rule under
 the header. Empty ROWS still prints the header, so the shape of the
 report is consistent whether or not anything is registered."
-  (let* ((ncols (length headers))
-         (widths (loop for i below ncols
-                       collect (reduce #'max
-                                       (cons (length (nth i headers))
-                                             (mapcar (lambda (r) (length (or (nth i r) ""))) rows))))))
-    (flet ((row-string (cells)
-             (format nil "  ~{~a~^  ~}"
-                     (loop for i below ncols collect (format nil "~va" (nth i widths) (or (nth i cells) ""))))))
-      (format t "~a~%" (row-string headers))
-      (format t "~a~%" (row-string (mapcar (lambda (w) (make-string w :initial-element #\-)) widths)))
-      (dolist (r rows) (format t "~a~%" (row-string r))))))
+  (flet ((truncate-cell (s)
+           (let ((str (or s "")))
+             (if (> (length str) *print-table-max-width*)
+                 (concatenate 'string (subseq str 0 (- *print-table-max-width* 3)) "...")
+                 str))))
+    (let* ((ncols (length headers))
+           (truncated-rows (mapcar (lambda (r) (mapcar #'truncate-cell r)) rows))
+           (truncated-headers (mapcar #'truncate-cell headers))
+           (widths (loop for i below ncols
+                         collect (reduce #'max
+                                         (cons (length (nth i truncated-headers))
+                                               (mapcar (lambda (r) (length (or (nth i r) ""))) truncated-rows))))))
+      (flet ((row-string (cells)
+               (format nil "  ~{~a~^  ~}"
+                       (loop for i below ncols collect (format nil "~va" (nth i widths) (or (nth i cells) ""))))))
+        (format t "~a~%" (row-string truncated-headers))
+        (format t "~a~%" (row-string (mapcar (lambda (w) (make-string w :initial-element #\-)) widths)))
+        (dolist (r truncated-rows) (format t "~a~%" (row-string r)))))))
 
 (defun action-type-counts (actions)
   (let ((counts (make-hash-table :test 'eq)))
@@ -161,6 +171,10 @@ report is consistent whether or not anything is registered."
   (format t "Apply complete.~%"))
 
 (defun cmd-diff (opts)
+  "Resolve the plan and check each action against current system state.
+Uses :plan-only mode (not :check) because run-pipeline's :check mode
+dispatches executors inline but doesn't capture individual results;
+we call execute-action separately to collect :would-change statuses."
   (bootstrap opts)
   (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
                                                        :project-root (cli-opts-root opts)

@@ -15,7 +15,7 @@
 (defun compute-config-lines (current ensure remove-list)
   (let* ((lines (if (zerop (length current))
                      '()
-                     (uiop:split-string (string-right-trim '(#\Newline) current) :separator '(#\Newline))))
+                     (uiop:split-string (string-right-trim '(#\Newline #\Return) current) :separator '(#\Newline))))
          (kept (remove-if (lambda (l) (member l remove-list :test #'string=)) lines))
          (missing (remove-if (lambda (l) (member l kept :test #'string=)) ensure)))
     (format nil "~{~a~%~}" (append kept missing))))
@@ -24,7 +24,9 @@
   (let* ((target (expand-home (action-target action)))
          (ensure (getf action :ensure))
          (remove-list (getf action :remove))
-         (current (or (read-file-string target) ""))
+          (current (or (read-file-string target) ""))
+          ;; Normalize \r\n to \n for consistent comparison
+          (current (remove #\Return current))
          (intended (compute-config-lines current ensure remove-list))
          (changed (not (equal intended current))))
     (case mode

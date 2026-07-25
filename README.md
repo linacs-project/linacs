@@ -205,17 +205,14 @@ linacs/
 │   ├── privilege.lisp
 │   ├── dsl.lisp
 │   └── cli.lisp
-├── linacs-tests/        # Test suite
-│   ├── README.md
+├── tests/               # Test suite
 │   ├── package.lisp
 │   ├── helpers.lisp
-│   ├── tests/
-│   │   ├── dsl/
-│   │   ├── features/
-│   │   ├── pipeline/
-│   │   ├── executors/
-│   │   └── actions/
-│   └── TEST-SUITE-REPORT.md
+│   ├── dsl/
+│   ├── features/
+│   ├── pipeline/
+│   ├── executors/
+│   └── actions/
 ├── build.sh
 ├── linacs.asd
 └── README.md
@@ -230,6 +227,16 @@ linacs/
 # Run in development mode
 sbcl --eval '(asdf:load-system :linacs)'
 ```
+
+### Portability
+
+LINACS targets SBCL. The build script (`build.sh`) uses `sb-ext:save-lisp-and-die`
+to produce a standalone executable, and the terminal-handling code in
+`read-sudo-password` (src/action-types/helpers.lisp) uses `sb-unix` and
+`sb-posix` for echo-disabled password prompts. A pure-ANSI fallback exists
+and is reached automatically on non-SBCL implementations or when the
+sb-posix contrib is not loaded, but full portability to another Common Lisp
+implementation (CCL, ABCL, ECL) is not currently a goal of the core project.
 
 ### Running Tests
 

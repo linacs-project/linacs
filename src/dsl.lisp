@@ -90,13 +90,6 @@ are known); :custom and all other options are taken as literal data."
                   ',rest-opts)
            *current-home-use-features*)))
 
-(defmacro %push-user-action (source-label action-type target-key target &rest opts)
-  "Shared machinery for the home-level convenience macros. All of ACTION-TYPE,
-TARGET, and OPTS are macro-time literal data; only TARGET-KEY varies by form
- (:target for most types, but :copy-file uses :to for its primary path)."
-  (let ((action (list* :action action-type target-key target (append opts (list :priority :user :source source-label)))))
-    `(push ',action *current-home-actions*)))
-
 (defmacro file (target &rest opts)
   "(file \"~/.gitconfig\" :from \"gitconfig\" ...) -> :copy-file action."
   (let ((action (list* :action :copy-file :target target :to target

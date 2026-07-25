@@ -72,6 +72,11 @@ Used as a fallback when the terminal cannot be manipulated
 Operates directly on SBCL's own terminal fd via sb-posix:tcsetattr,
 avoiding the need for any child-process terminal access.
 
+NOTE: Uses SBCL-specific symbols (sb-unix:unix-isatty, sb-posix:tcgetattr,
+sb-posix:tcsetattr). The visible-echo fallback READ-SUDO-PASSWORD-VISIBLE
+is pure ANSI CL and is reached on any non-SBCL implementation or when the
+sb-posix contrib is not loaded.
+
 Falls back to READ-SUDO-PASSWORD-VISIBLE when no TTY is available or
 when the terminal-manipulation calls fail (e.g. sb-posix contrib not
 built, or running in a CI environment)."

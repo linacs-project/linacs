@@ -42,6 +42,7 @@
    #:register-fact-prober
    #:probe-all-facts
    #:fact
+   #:fact-known-p
    #:*facts*
    #:define-profile
    #:*profiles*

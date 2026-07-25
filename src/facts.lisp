@@ -394,5 +394,14 @@ bus with a less descriptive name)."
 
 (defun fact (key)
   "Read a fact by keyword. Reflects probed values merged with any
-profile override -- the home definition cannot distinguish the two."
+profile override -- the home definition cannot distinguish the two.
+Returns NIL for both \"key probed with value NIL\" and \"key never
+probed\"; use FACT-KNOWN-P to distinguish."
   (getf *facts* key))
+
+(defun fact-known-p (key)
+  "T if KEY exists in *FACTS* (was probed or profile-overridden),
+regardless of its value.  Returns NIL if KEY was never probed
+(e.g. a misspelling or a prober that was never registered)."
+  (let ((sentinel (make-symbol "FACT-NOT-FOUND")))
+    (not (eq sentinel (getf *facts* key sentinel)))))

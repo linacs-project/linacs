@@ -7,7 +7,7 @@
   "Disabled actions with :prune-explicitly-disabled trait are NOT deleted in --dry-run mode"
   (reset-project-registries)
 
-  (let ((test-file (expand-home "~/.test-disabled-file.txt")))
+  (let ((test-file (merge-pathnames (user-homedir-pathname) ".test-disabled-file.txt")))
     ;; Create a file
     (when (probe-file test-file)
       (delete-file test-file))
@@ -16,23 +16,22 @@
 
     ;; Set up home with trait
     (let ((*current-home-thunk* (lambda ()
-                                 (setf *current-home-name* :test)
-                                 (setf *current-home-traits* '(:prune-explicitly-disabled))
-                                 (setf *current-home-actions* nil)
-                                 (file test-file :from "test-content")))))
+                                  (setf *current-home-name* :test)
+                                  (setf *current-home-traits* '(:prune-explicitly-disabled))
+                                  (setf *current-home-actions* nil)
+                                  (file test-file :from "test-content")))))
 
     ;; Run in dry-run mode (should NOT delete the file)
     (multiple-value-bind (ordered home)
         (run-pipeline :execute-mode :plan-only)
       ;; File should still exist after dry-run
-      (should (probe-file test-file))
       (it.bese.fiveam:is (probe-file test-file)))))
 
 (def-test disabled-actions-are-removed-in-apply-mode ()
   "Disabled actions with :prune-explicitly-disabled trait ARE deleted in apply mode"
   (reset-project-registries)
 
-  (let ((test-file (expand-home "~/.test-disabled-file.txt")))
+  (let ((test-file (merge-pathnames (user-homedir-pathname) ".test-disabled-file.txt")))
     ;; Create a file
     (when (probe-file test-file)
       (delete-file test-file))
@@ -41,23 +40,22 @@
 
     ;; Set up home with trait
     (let ((*current-home-thunk* (lambda ()
-                                 (setf *current-home-name* :test)
-                                 (setf *current-home-traits* '(:prune-explicitly-disabled))
-                                 (setf *current-home-actions* nil)
-                                 (file test-file :from "test-content")))))
+                                  (setf *current-home-name* :test)
+                                  (setf *current-home-traits* '(:prune-explicitly-disabled))
+                                  (setf *current-home-actions* nil)
+                                  (file test-file :from "test-content")))))
 
     ;; Run in apply mode (SHOULD delete the file)
     (multiple-value-bind (ordered home)
         (run-pipeline :execute-mode :apply)
       ;; File should be deleted after apply
-      (should (not (probe-file test-file)))
       (it.bese.fiveam:is (not (probe-file test-file))))))
 
 (def-test disabled-actions-without-trait-are-skipped-in-dry-run ()
   "Disabled actions WITHOUT :prune-explicitly-disabled trait are skipped in dry-run"
   (reset-project-registries)
 
-  (let ((test-file (expand-home "~/.test-disabled-file-no-trait.txt")))
+  (let ((test-file (merge-pathnames (user-homedir-pathname) ".test-disabled-file-no-trait.txt")))
     ;; Create a file
     (when (probe-file test-file)
       (delete-file test-file))
@@ -75,5 +73,4 @@
     (multiple-value-bind (ordered home)
         (run-pipeline :execute-mode :plan-only)
       ;; File should still exist (action was skipped, not pruned)
-      (should (probe-file test-file))
       (it.bese.fiveam:is (probe-file test-file)))))
