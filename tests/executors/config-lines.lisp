@@ -6,4 +6,4 @@
 (def-test config-lines-identity ()
   "Config-lines action has correct identity"
   (it.bese.fiveam:is (equal (linacs.core:action-identity '(:action :config-lines :target "~/.config/app/config" :ensure ("key = value")))
-                             '(:config-lines ("key = value") . "~/.config/app/config"))))
+                             '(:config-lines (:ensure "key = value") (:remove nil) "~/.config/app/config"))))
