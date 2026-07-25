@@ -1,5 +1,5 @@
 # Most clean installations or new users do have a local bin.
-mkdir ~/.local/bin/
+mkdir -p ~/.local/bin/
 
 # Build linacs and store in bin.
 sbcl \
