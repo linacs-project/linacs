@@ -20,6 +20,7 @@
 (defstruct cli-opts
   (root ".") (platform nil) (profile nil) (provider-overrides '())
   (dry-run nil) (continue-on-error nil) (output nil) (verbosity 1) (quiet nil)
+  (sudo-password-stdin nil) (sudo-reset nil)
   (help nil))
 
 (defun parse-args (args)
@@ -57,8 +58,10 @@ command's help instead of guessing what the person meant."
                   (if args (setf (cli-opts-output opts) (pop args)) (push a unknown)))
                  ((string= a "-vv") (incf (cli-opts-verbosity opts) 2))
                  ((or (string= a "-v") (string= a "--verbose")) (incf (cli-opts-verbosity opts)))
-                 ((string= a "--quiet") (setf (cli-opts-quiet opts) t) (setf (cli-opts-verbosity opts) 0))
-                 ((and (> (length a) 0) (char= (char a 0) #\-)) (push a unknown))
+                  ((string= a "--sudo-password-stdin") (setf (cli-opts-sudo-password-stdin opts) t))
+                  ((string= a "--sudo-reset") (setf (cli-opts-sudo-reset opts) t))
+                  ((string= a "--quiet") (setf (cli-opts-quiet opts) t) (setf (cli-opts-verbosity opts) 0))
+                  ((and (> (length a) 0) (char= (char a 0) #\-)) (push a unknown))
                  (t nil)))) ; a bare positional argument -- no command currently takes one, so ignore it
     (values opts (nreverse unknown))))
 
@@ -128,11 +131,29 @@ report is consistent whether or not anything is registered."
     (sort (loop for k being the hash-key of counts using (hash-value v) collect (cons k v))
           #'string< :key (lambda (p) (string (car p))))))
 
+(defun apply-sudo-password-stdin ()
+  "Read a sudo password from *standard-input* and cache it via sudo -S."
+  (let ((password (read-line *standard-input* nil "")))
+    (unless (zerop (nth-value 2
+                    (uiop:run-program (list "sudo" "-S" "true")
+                                      :input (make-string-input-stream
+                                              (format nil "~a~%" password))
+                                      :ignore-error-status t)))
+      (error 'execution-failure :action-type :privileged-command
+             :target "sudo credential cache"
+             :underlying "sudo -S true failed -- wrong password from stdin?"))))
+
+(defun sudo-reset-after-run (opts)
+  (when (and (cli-opts-sudo-reset opts) (not (privileged-p)))
+    (uiop:run-program (list "sudo" "-k") :ignore-error-status t :output nil :error-output nil)))
+
 (defun cmd-plan (opts)
   (bootstrap opts)
+  (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
   (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
                                                        :project-root (cli-opts-root opts)
                                                        :execute-mode :plan-only)
+    (when ordered (preflight-notice ordered))
     (format t "Resolved plan for ~a (traits: ~a):~%~%" (getf home :name) (or (getf home :traits) "none"))
     (print-table '("TYPE" "TARGET")
                  (mapcar (lambda (a) (list (string-downcase (string (action-type a)))
@@ -140,12 +161,15 @@ report is consistent whether or not anything is registered."
                          ordered))
     (format t "~%~d action(s)~@[ -- ~{~a~^, ~}~]~%"
             (length ordered)
-            (and ordered (mapcar (lambda (p) (format nil "~a ~(~a~)" (cdr p) (car p))) (action-type-counts ordered))))))
+            (and ordered (mapcar (lambda (p) (format nil "~a ~(~a~)" (cdr p) (car p))) (action-type-counts ordered))))
+    (sudo-reset-after-run opts)))
 
 (defun cmd-check (opts)
   (bootstrap opts)
+  (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
   (run-pipeline :profile (cli-opts-profile opts) :project-root (cli-opts-root opts) :execute-mode :plan-only)
-  (format t "Configuration resolves cleanly.~%"))
+  (format t "Configuration resolves cleanly.~%")
+  (sudo-reset-after-run opts))
 
 (defun cmd-validate (opts)
   ;; Syntax-only: try to read every conventional file plus home.lisp without
@@ -166,9 +190,11 @@ report is consistent whether or not anything is registered."
 
 (defun cmd-apply (opts)
   (bootstrap opts)
+  (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
   (run-pipeline :profile (cli-opts-profile opts) :project-root (cli-opts-root opts)
                 :execute-mode (if (cli-opts-dry-run opts) :check :apply))
-  (format t "Apply complete.~%"))
+  (format t "Apply complete.~%")
+  (sudo-reset-after-run opts))
 
 (defun cmd-diff (opts)
   "Resolve the plan and check each action against current system state.
@@ -176,9 +202,11 @@ Uses :plan-only mode (not :check) because run-pipeline's :check mode
 dispatches executors inline but doesn't capture individual results;
 we call execute-action separately to collect :would-change statuses."
   (bootstrap opts)
+  (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
   (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
                                                        :project-root (cli-opts-root opts)
                                                        :execute-mode :plan-only)
+    (when ordered (preflight-notice ordered))
     (let ((changes (loop for a in ordered
                          for result = (execute-action a :mode :check)
                          when (eq (getf result :status) :would-change)
@@ -388,31 +416,36 @@ or a clear diagnosis of why it can't resolve -- used by `linacs doctor`."
     (:output   "-o, --output FILE"   "Write output to FILE")
     (:verbose  "-v, --verbose"       "Increase verbosity (repeatable: -v, -vv)")
     (:quiet    "--quiet"             "Only show errors")
+    (:sudo-password-stdin "--sudo-password-stdin"
+               "Read sudo password from stdin before resolving")
+    (:sudo-reset "--sudo-reset"      "Run `sudo -k` after the command finishes")
     (:help     "-h, --help"          "Show this command's help and exit")))
 
 (defparameter *command-specs*
   (list
    (list :name "plan" :fn #'cmd-plan
-         :summary "Show the resolved, ordered action list"
-         :options '(:root :profile :verbose :quiet :help)
-         :examples '("linacs plan -C ~/my-home --profile work-laptop"))
+          :summary "Show the resolved, ordered action list"
+          :options '(:root :profile :sudo-password-stdin :sudo-reset :verbose :quiet :help)
+          :examples '("linacs plan -C ~/my-home --profile work-laptop"
+                      "linacs plan --sudo-password-stdin < ~/.sudo-pass"))
    (list :name "apply" :fn #'cmd-apply
-         :summary "Execute the ordered action list"
-         :options '(:root :profile :dry-run :continue :verbose :quiet :help)
-         :examples '("linacs apply -C ~/my-home --profile work-laptop   # sudo (if needed) is per-action, not up front"
-                     "linacs apply -C ~/my-home --profile work-laptop -n   # dry run"))
+          :summary "Execute the ordered action list"
+          :options '(:root :profile :dry-run :continue :sudo-password-stdin :sudo-reset :verbose :quiet :help)
+          :examples '("linacs apply -C ~/my-home --profile work-laptop   # sudo (if needed) is per-action, not up front"
+                      "linacs apply -C ~/my-home --profile work-laptop -n   # dry run"
+                      "linacs apply --sudo-password-stdin < ~/.sudo-pass"))
    (list :name "diff" :fn #'cmd-diff
-         :summary "Show which actions would change something"
-         :options '(:root :profile :verbose :quiet :help)
-         :examples '("linacs diff -C ~/my-home --profile work-laptop"))
+          :summary "Show which actions would change something"
+          :options '(:root :profile :sudo-password-stdin :sudo-reset :verbose :quiet :help)
+          :examples '("linacs diff -C ~/my-home --profile work-laptop"))
    (list :name "validate" :fn #'cmd-validate
-         :summary "Check configuration syntax only (facts/providers untouched)"
-         :options '(:root :verbose :quiet :help)
-         :examples '("linacs validate -C ~/my-home"))
+          :summary "Check configuration syntax only (facts/providers untouched)"
+          :options '(:root :verbose :quiet :help)
+          :examples '("linacs validate -C ~/my-home"))
    (list :name "check" :fn #'cmd-check
-         :summary "Fully resolve the configuration without executing anything"
-         :options '(:root :profile :verbose :quiet :help)
-         :examples '("linacs check -C ~/my-home --profile work-laptop"))
+          :summary "Fully resolve the configuration without executing anything"
+          :options '(:root :profile :sudo-password-stdin :sudo-reset :verbose :quiet :help)
+          :examples '("linacs check -C ~/my-home --profile work-laptop"))
    (list :name "explain" :fn #'cmd-explain
          :summary "Print the resolved feature graph and action order"
          :options '(:root :profile :verbose :quiet :help)

@@ -102,36 +102,56 @@ built, or running in a CI environment)."
           (read-sudo-password-visible)))
       (read-sudo-password-visible)))
 
-(defun run-privileged (args)
+(defvar *sudo-askpass* (uiop:getenv "SUDO_ASKPASS")
+  "Cached at load time. When set, RUN-PRIVILEGED uses `sudo -A` instead
+of interactive password prompting, delegating to the askpass program
+specified by the environment variable.")
+
+(defun sudo-n-or-a-prefix ()
+  "Return (list \"sudo\" \"-n\") for cached-credential use, or
+(list \"sudo\" \"-A\") when SUDO_ASKPASS is set."
+  (if (and *sudo-askpass* (plusp (length *sudo-askpass*)))
+      (list "sudo" "-A")
+      (list "sudo" "-n")))
+
+(defun run-privileged (args &key input)
   "Run a command, prefixing with sudo unless already privileged.
 
 Credentials are validated before the actual command runs:
-  1. Try `sudo -n true` -- if cached credentials exist, skip prompting.
+  1. Try `sudo -n true`/`sudo -A true` -- if cached or askpass works, skip.
   2. Otherwise prompt for a password (echo off when possible) and cache
      it via `sudo -S true`.
-  3. Run the real command with `sudo -n <args>` (no prompt, cached).
+  3. Run the real command with `~{~a~^ ~}` (no prompt, cached).
 
-Signals EXECUTION-FAILURE if the command exits non-zero -- a wrong
-password, a failed sudo prompt, or a command that genuinely fails are
-all treated as hard errors (no automatic retry, no fallback)."
+:INPUT -- string content to pass to the command's stdin (via
+          MAKE-STRING-INPUT-STREAM).
+
+Signals EXECUTION-FAILURE if the command exits non-zero."
   (let* ((needs-sudo-p (not (privileged-p))))
     (when needs-sudo-p
       (unless (zerop (nth-value 2
-                      (uiop:run-program (list "sudo" "-n" "true")
+                      (uiop:run-program (append (sudo-n-or-a-prefix) (list "true"))
                                         :ignore-error-status t)))
-        (let ((password (read-sudo-password)))
-          (unless (zerop (nth-value 2
-                          (uiop:run-program (list "sudo" "-S" "true")
-                                            :input (make-string-input-stream
-                                                    (format nil "~a~%" password))
-                                            :ignore-error-status t)))
-            (error 'execution-failure :action-type :privileged-command
-                   :target "credential validation"
-                   :underlying (format nil "sudo -S true failed -- wrong password?"))))))
-    (let* ((cmd (if needs-sudo-p (cons "sudo" (cons "-n" args)) args))
+        ;; Prompt interactively only when no askpass is configured.
+        (unless *sudo-askpass*
+          (let ((password (read-sudo-password)))
+            (unless (zerop (nth-value 2
+                            (uiop:run-program (list "sudo" "-S" "true")
+                                              :input (make-string-input-stream
+                                                      (format nil "~a~%" password))
+                                              :ignore-error-status t)))
+              (error 'execution-failure :action-type :privileged-command
+                     :target "credential validation"
+                     :underlying (format nil "sudo -S true failed -- wrong password?")))))))
+    (let* ((prefix (if needs-sudo-p (sudo-n-or-a-prefix) '()))
+           (cmd (append prefix args))
            (exit-code (nth-value 2
-                        (uiop:run-program cmd :output t :error-output t
-                                          :ignore-error-status t))))
+                         (uiop:run-program cmd :output t :error-output t
+                                           :input (when input
+                                                    (make-string-input-stream input))
+                                           :ignore-error-status t))))
+      (when needs-sudo-p
+        (linacs.log:debug* "Privileged command: ~{~a~^ ~}" cmd))
       (unless (zerop exit-code)
         (error 'execution-failure :action-type :privileged-command
                :target (format nil "~{~a~^ ~}" args)
@@ -150,25 +170,14 @@ via a privileged `mkdir -p`."
   "Write CONTENT to PATH via sudo unconditionally -- used internally by
 WRITE-FILE-WITH-ESCALATION once a plain write has already failed, and
 directly by executors that always target a root-owned path (e.g.
-/etc/hostname). Writes to a scratch file as the invoking user first, then
-copies it into place with one privileged command, rather than requiring
-the whole linacs process to run as root just to open a root-owned path
-directly. Ensures the destination's parent directory exists first, with
-the same escalate-if-needed policy."
+/etc/hostname). Pipes content through stdin to `sudo sh -c cat>PATH`,
+avoiding any world-readable temporary files. Ensures the destination's
+parent directory exists first, with the same escalate-if-needed policy."
   (ensure-directories-with-escalation (uiop:pathname-directory-pathname (pathname path)))
   (if (privileged-p)
       (write-file-string path content)
-      (let ((tmp (format nil "/tmp/linacs-write-~a" (random 1000000))))
-        ;; Create the scratch file and restrict its permissions BEFORE
-        ;; writing any content into it -- some content passing through
-        ;; this path (e.g. a :secret needing escalation) is sensitive,
-        ;; and a default-permissive /tmp file should never have a window
-        ;; where another user could read it, even momentarily.
-        (write-file-string tmp "")
-        (ignore-errors (uiop:run-program (list "chmod" "600" tmp)))
-        (write-file-string tmp content)
-        (run-privileged (list "cp" tmp path))
-        (ignore-errors (delete-file tmp)))))
+      (run-privileged (list "sh" "-c" (format nil "cat > ~a" path))
+                      :input content)))
 
 (defun write-file-with-escalation (path content)
   "Write CONTENT to PATH. Tries as the invoking user first; only if that

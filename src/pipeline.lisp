@@ -75,9 +75,8 @@ DISCOVER-PLUGINS / DISCOVER-PROJECT). EXECUTE-MODE is :apply, :check, or
         (run-hooks :before-execute *facts* ordered)
 
         (unless (eq execute-mode :plan-only)
-          ;; Informational only, before a real :apply -- never blocks.
-          (when (eq execute-mode :apply)
-            (preflight-notice ordered))
+          ;; Informational only -- never blocks.
+          (preflight-notice ordered)
 
           ;; Step 5: execute (or check) each action's built-in executor, in order,
           ;; honoring :disabled + the :prune-explicitly-disabled trait.
