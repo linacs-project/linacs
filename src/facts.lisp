@@ -42,40 +42,94 @@
   "Plist of resolved facts, populated by PROBE-ALL-FACTS and merged with
 a profile's overrides. Read via FACT.")
 
-(defun register-fact-prober (key prober-fn &optional (registrant (package-name *package*)))
+(defvar *fact-metadata* (make-hash-table :test 'eq)
+  "Maps fact key -> plist with :type (CL type specifier) and :doc (string).
+Populated by REGISTER-FACT-PROBER when :type and/or :doc are supplied.")
+
+(defun register-fact-prober (key prober-fn &optional (registrant (package-name *package*))
+                             &key type doc)
   "Register a fact prober for KEY. If a different registrant already
 registered a prober for the same KEY, signal FACT-PROBER-CONFLICT and abort
-startup -- there is no implicit first-one-wins resolution."
+startup -- there is no implicit first-one-wins resolution.
+
+Optional keyword arguments:
+  :TYPE -- a CL type specifier checked at probe time (via TYPEP) for
+           informative warnings when the prober returns an unexpected value.
+  :DOC  -- a human-readable description shown by `linacs list`."
   (let ((existing (gethash key *fact-probers*)))
     (when (and existing (not (string= (cdr existing) registrant)))
       (error 'fact-prober-conflict
              :fact-key key
              :registrants (list (cdr existing) registrant)))
     (setf (gethash key *fact-probers*) (cons prober-fn registrant)))
+  (when (or type doc)
+    (setf (gethash key *fact-metadata*)
+          (nconc (when type (list :type type))
+                 (when doc (list :doc doc)))))
   key)
 
 (defun default-fact-probers ()
-  "Register the built-in facts LINACS always probes."
-  (register-fact-prober :os #'probe-os "linacs-core")
-  (register-fact-prober :hostname (lambda () (or (uiop:hostname) "unknown")) "linacs-core")
-  (register-fact-prober :laptop-p #'probe-laptop-p "linacs-core")
-  (register-fact-prober :display-server #'probe-display-server "linacs-core")
-  (register-fact-prober :gpu-vendor #'probe-gpu-vendor "linacs-core")
-  (register-fact-prober :vm-p #'probe-vm-p "linacs-core")
-  (register-fact-prober :cpu-arch #'probe-cpu-arch "linacs-core")
-  (register-fact-prober :package-manager #'probe-package-manager "linacs-core")
-  (register-fact-prober :wifi-p #'probe-wifi-p "linacs-core")
-  (register-fact-prober :bluetooth-p #'probe-bluetooth-p "linacs-core")
-  (register-fact-prober :touchpad-p #'probe-touchpad-p "linacs-core")
-  (register-fact-prober :ram-gb #'probe-ram-gb "linacs-core")
-  (register-fact-prober :cpu-cores #'probe-cpu-cores "linacs-core")
-  (register-fact-prober :uefi-p #'probe-uefi-p "linacs-core")
-  (register-fact-prober :init-system #'probe-init-system "linacs-core")
-  (register-fact-prober :root-disk-type #'probe-root-disk-type "linacs-core")
-  (register-fact-prober :fingerprint-p #'probe-fingerprint-p "linacs-core")
-  (register-fact-prober :container-p #'probe-container-p "linacs-core")
-  (register-fact-prober :sys-vendor #'probe-sys-vendor "linacs-core")
-  (register-fact-prober :product-name #'probe-product-name "linacs-core"))
+  "Register the built-in facts LINACS always probes, with type metadata."
+  (register-fact-prober :os #'probe-os "linacs-core"
+    :type '(member :fedora :arch :debian :ubuntu :unknown)
+    :doc "Linux distribution identifier")
+  (register-fact-prober :hostname (lambda () (or (uiop:hostname) "unknown")) "linacs-core"
+    :type '(or string (member :unknown))
+    :doc "System hostname")
+  (register-fact-prober :laptop-p #'probe-laptop-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if any battery is present")
+  (register-fact-prober :display-server #'probe-display-server "linacs-core"
+    :type '(or (member :wayland :x11) null)
+    :doc "Active display server; nil in headless/SSH environments")
+  (register-fact-prober :gpu-vendor #'probe-gpu-vendor "linacs-core"
+    :type 'list
+    :doc "List of keyword GPU vendor identifiers found via DRM")
+  (register-fact-prober :vm-p #'probe-vm-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if running inside a VM or hypervisor")
+  (register-fact-prober :cpu-arch #'probe-cpu-arch "linacs-core"
+    :type 'keyword
+    :doc "CPU architecture from uname -m (e.g. :x86-64, :aarch64)")
+  (register-fact-prober :package-manager #'probe-package-manager "linacs-core"
+    :type '(member :pacman :dnf :yum :apt :zypper :apk :xbps :portage :unknown)
+    :doc "Installed system package manager binary")
+  (register-fact-prober :wifi-p #'probe-wifi-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if a wireless network interface is present")
+  (register-fact-prober :bluetooth-p #'probe-bluetooth-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if a Bluetooth adapter is present")
+  (register-fact-prober :touchpad-p #'probe-touchpad-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if a touchpad input device is present")
+  (register-fact-prober :ram-gb #'probe-ram-gb "linacs-core"
+    :type '(or integer (member :unknown))
+    :doc "Total system RAM in gigabytes")
+  (register-fact-prober :cpu-cores #'probe-cpu-cores "linacs-core"
+    :type '(or integer (member :unknown))
+    :doc "Number of logical CPU threads")
+  (register-fact-prober :uefi-p #'probe-uefi-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if booted in UEFI mode (/sys/firmware/efi exists)")
+  (register-fact-prober :init-system #'probe-init-system "linacs-core"
+    :type '(member :systemd :openrc :runit :sysvinit :unknown)
+    :doc "Init system managing PID 1")
+  (register-fact-prober :root-disk-type #'probe-root-disk-type "linacs-core"
+    :type '(member :nvme :ssd :hdd :unknown)
+    :doc "Root filesystem backing disk type")
+  (register-fact-prober :fingerprint-p #'probe-fingerprint-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if a USB fingerprint reader is present")
+  (register-fact-prober :container-p #'probe-container-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if running inside a container")
+  (register-fact-prober :sys-vendor #'probe-sys-vendor "linacs-core"
+    :type '(or string (member :unknown))
+    :doc "System vendor string from DMI")
+  (register-fact-prober :product-name #'probe-product-name "linacs-core"
+    :type '(or string (member :unknown))
+    :doc "Product name string from DMI"))
 
 ;;; --- Small local helpers, self-contained on purpose (see file header) ---
 
@@ -385,10 +439,18 @@ bus with a less descriptive name)."
 ;;; --------------------------------------------------------------------------
 
 (defun probe-all-facts ()
-  "Run every registered fact prober once and populate *FACTS*."
+  "Run every registered fact prober once and populate *FACTS*.
+Validates each probed value against its declared :type in *FACT-METADATA*
+(if one exists), logging a warning on mismatch via `linacs.log:warn*`."
   (let ((result '()))
     (maphash (lambda (key entry)
-               (setf result (list* key (funcall (car entry)) result)))
+               (let ((value (funcall (car entry))))
+                 (let ((meta (gethash key *fact-metadata*)))
+                   (when (and meta (getf meta :type))
+                     (unless (typep value (getf meta :type))
+                       (linacs.log:warn* "Fact ~s returned ~s (type ~s), which does not match declared type ~s"
+                                         key value (type-of value) (getf meta :type)))))
+                 (setf result (list* key value result))))
              *fact-probers*)
     (setf *facts* result)))
 

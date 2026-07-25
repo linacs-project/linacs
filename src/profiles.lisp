@@ -19,11 +19,16 @@
 
 (defun apply-profile (profile-name)
   "Merge PROFILE-NAME's overrides on top of the already-probed *FACTS*.
-Signals an ordinary error if the profile is undefined."
+Signals an ordinary error if the profile is undefined. Logs a warning
+when an override key has no registered metadata (possible typo)."
   (when profile-name
     (let ((overrides (gethash profile-name *profiles*)))
       (unless overrides
         (error "Undefined profile: ~a" profile-name))
       (dolist (pair overrides)
-        (setf (getf *facts* (car pair)) (cdr pair)))))
+        (let ((key (car pair)))
+          (unless (gethash key *fact-metadata*)
+            (linacs.log:warn* "Profile ~s overrides fact ~s, which has no registered metadata -- possible typo?"
+                              profile-name key))
+          (setf (getf *facts* key) (cdr pair))))))
   *facts*)

@@ -284,7 +284,17 @@ we call execute-action separately to collect :would-change statuses."
   (format t "Action types:~%")
   (let ((rows (loop for k being the hash-key of *action-types*
                      collect (list (string-downcase (string k)) (action-type-description k)))))
-    (print-table '("TYPE" "DESCRIPTION") (sort rows #'string< :key #'first))))
+    (print-table '("TYPE" "DESCRIPTION") (sort rows #'string< :key #'first)))
+  (terpri)
+
+  (format t "Facts:~%")
+  (let ((rows (loop for k being the hash-key of *fact-metadata* using (hash-value meta)
+                    collect (list (string-downcase (string k))
+                                  (princ-to-string (or (getf meta :type) ""))
+                                  (or (getf meta :doc) "")))))
+    (if rows
+        (print-table '("FACT" "TYPE" "DESCRIPTION") (sort rows #'string< :key #'first))
+        (format t "  (none registered)~%"))))
 
 (defun cmd-facts (opts)
   "Print every resolved fact -- after probing and merging the selected
@@ -295,9 +305,17 @@ that provider on this machine\" without re-deriving it from probes."
   (apply-profile (cli-opts-profile opts))
   (let* ((pairs (loop for (k v) on *facts* by #'cddr collect (cons k v)))
          (sorted (sort (copy-list pairs) #'string< :key (lambda (p) (string (car p)))))
-         (width (reduce #'max (mapcar (lambda (p) (length (string (car p)))) sorted) :initial-value 0)))
+         (key-width (reduce #'max (mapcar (lambda (p) (length (string (car p)))) sorted) :initial-value 0))
+         (type-width (reduce #'max (mapcar (lambda (p)
+                                              (let ((meta (gethash (car p) *fact-metadata*)))
+                                                (length (princ-to-string (or (getf meta :type) "")))))
+                                            sorted)
+                              :initial-value 0)))
     (dolist (p sorted)
-      (format t "~va  ~s~%" width (string (car p)) (cdr p)))))
+      (let* ((key (car p))
+             (meta (gethash key *fact-metadata*))
+             (type-str (princ-to-string (or (getf meta :type) ""))))
+        (format t "~va  ~vs  ~s~%" key-width (string key) type-width type-str (cdr p))))))
 
 (defun feature-resolution-summary (r)
   "How feature request R will actually resolve: the chosen provider name,

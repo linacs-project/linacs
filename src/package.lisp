@@ -44,6 +44,7 @@
    #:fact
    #:fact-known-p
    #:*facts*
+   #:*fact-metadata*
    #:define-profile
    #:*profiles*
    #:apply-profile
