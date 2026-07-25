@@ -102,7 +102,7 @@ The test suite covers:
 
 **Total: 23 tests** - All passing
 
-See [linacs-tests/README.md](linacs-tests/emoji) for detailed testing documentation.
+See [linacs-tests/README.md](../linacs-tests/README.md) for detailed testing documentation.
 
 ### Quick Test
 
