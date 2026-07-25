@@ -1,15 +1,12 @@
 ;; Simple test runner with detailed results
-(setf asdf:*central-registry* nil)
-(push (make-pathname :directory '(:absolute "home" "echjansen" "Projects" "codeberg" "linacs-project" "linacs"))
-      asdf:*central-registry*)
+;; Run from the linacs project root: sbcl --load run-simple-tests.lisp
 
 (format t "Loading dependencies...~%")
-(ql:quickload :asdf)
-(ql:quickload :uiop)
 (ql:quickload :fiveam)
 (format t "Dependencies loaded~%")
 
 (format t "Loading linacs...~%")
+(load "linacs.asd")
 (asdf:load-system :linacs)
 (format t "linacs loaded~%")
 

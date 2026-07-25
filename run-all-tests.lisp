@@ -1,19 +1,16 @@
 ;; Comprehensive test runner with detailed summary
-(setf asdf:*central-registry* nil)
-(push (make-pathname :directory '(:absolute "home" "echjansen" "Projects" "codeberg" "linacs-project" "linacs"))
-      asdf:*central-registry*)
+;; Run from the linacs project root: sbcl --load run-all-tests.lisp
 
 (format t "~%======================================~%")
 (format t "COMPREHENSIVE TEST SUITE~%")
 (format t "======================================~%~%")
 
 (format t "Loading dependencies...~%")
-(ql:quickload :asdf)
-(ql:quickload :uiop)
 (ql:quickload :fiveam)
 (format t "Dependencies loaded~%")
 
 (format t "Loading linacs...~%")
+(load "linacs.asd")
 (asdf:load-system :linacs)
 (format t "linacs loaded~%")
 
