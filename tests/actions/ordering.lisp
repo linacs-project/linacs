@@ -7,7 +7,7 @@
   "Actions are ordered correctly"
   (reset-project-registries)
 
-  (linacs.core:register-provider :test-provider :for :test-feature
+  (linacs.core:define-provider :test-provider :for :test-feature
     (lambda (facts)
       (declare (ignore facts))
       (list

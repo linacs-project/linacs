@@ -9,7 +9,7 @@
 ;;;; SKIP-FEATURE restarts rather than guessing.
 ;;;;
 ;;;; Usage:
-;;;;     (register-provider :emacs :for :editor :default t :description "..."
+;;;;     (define-provider :emacs :for :editor :default t :description "..."
 ;;;;       (lambda (facts) (list '(:action :package :target :emacs :via :system))))
 
 (in-package :linacs.core)
@@ -18,13 +18,13 @@
   "Maps feature name -> list of (provider-name provider-function default-p
 description), one entry per registered provider for that feature.")
 
-(defun %register-provider (provider-name feature-name fn &key default description)
+(defun %define-provider (provider-name feature-name fn &key default description)
   (let ((alist (remove provider-name (gethash feature-name *providers*) :key #'first)))
     (push (list provider-name fn default description) alist)
     (setf (gethash feature-name *providers*) alist)))
 
-(defmacro register-provider (provider-name &rest args)
-  "(register-provider PROVIDER-NAME :for FEATURE-NAME [:default BOOL] [:description STR] FUNCTION-FORM)
+(defmacro define-provider (provider-name &rest args)
+  "(define-provider PROVIDER-NAME :for FEATURE-NAME [:default BOOL] [:description STR] FUNCTION-FORM)
 Matches the spec's calling convention where the provider function is a
 trailing positional argument after the :for keyword pair; an optional
 :default t marks this provider as the one to use automatically when
@@ -32,14 +32,14 @@ trailing positional argument after the :for keyword pair; an optional
 provider is registered for FEATURE-NAME. An optional :description is
 purely documentation, shown by `linacs list` and similar reporting."
   (let ((for-pos (position :for args)))
-    (unless for-pos (error "register-provider requires :for FEATURE-NAME"))
+    (unless for-pos (error "define-provider requires :for FEATURE-NAME"))
     (let* ((feature-name (nth (1+ for-pos) args))
            (tail (nthcdr (+ for-pos 2) args))
            (fn-form (car (last tail)))
            (opts (butlast tail))
            (default (getf opts :default))
            (description (getf opts :description)))
-      `(%register-provider ,provider-name ,feature-name ,fn-form
+      `(%define-provider ,provider-name ,feature-name ,fn-form
                             :default ,default :description ,description))))
 
 (defun find-providers-for (feature-name)

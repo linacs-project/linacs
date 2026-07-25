@@ -138,7 +138,7 @@ lives in, as long as it's one of them):
 ```lisp
 (in-package :linacs.core)
 
-(register-provider :bash :for :shell
+(define-provider :bash :for :shell
   (lambda (facts)
     (declare (ignore facts))
     (list
@@ -211,7 +211,7 @@ Say you also want zsh at work. Add a second provider:
 
 ```lisp
 ;; providers/shell.lisp, appended
-(register-provider :zsh :for :shell
+(define-provider :zsh :for :shell
   (lambda (facts)
     (declare (ignore facts))
     (list
@@ -514,7 +514,7 @@ lives in a plain hash table, held in a special variable:
 | Variable | Populated by | Cleared on every `bootstrap`? |
 |---|---|---|
 | `*feature-registry*` | `define-feature` | Yes |
-| `*providers*` | `register-provider` | Yes |
+| `*providers*` | `define-provider` | Yes |
 | `*catalogs*` | `define-catalog` / `register-catalog` | Yes |
 | `*fact-probers*` | `register-fact-prober` | Yes |
 | `*pipeline-hooks*` | `register-pipeline-hook` | Yes |
@@ -575,7 +575,7 @@ extensible and where it's registered:
 | To add | Call | Where it typically lives |
 |---|---|---|
 | A capability | `define-feature` | a project's `features/*.lisp` |
-| An implementation of a capability | `register-provider` | a project's `providers/*.lisp` |
+| An implementation of a capability | `define-provider` | a project's `providers/*.lisp` |
 | A distro package-name mapping | `register-catalog` | a project's `catalogs/*.lisp` |
 | A new probed fact | `register-fact-prober` | a project's `providers/*.lisp` |
 | Cross-cutting behavior (audit logging, a confirmation prompt) | `register-pipeline-hook` | a project's `hooks/*.lisp` |
@@ -1161,7 +1161,7 @@ whole thing:**
 ### 5.18 Providers
 
 ```lisp
-(register-provider :emacs :for :editor
+(define-provider :emacs :for :editor
   (lambda (facts)
     (list
       '(:action :package :target :emacs :via :system)
@@ -1173,7 +1173,7 @@ whole thing:**
 fixed list:**
 
 ```lisp
-(register-provider :lsp-auto-install :for :language-support
+(define-provider :lsp-auto-install :for :language-support
   (lambda (facts)
     (mapcar (lambda (lang)
               (list :action :package
@@ -1185,7 +1185,7 @@ fixed list:**
 something more useful than just its name:
 
 ```lisp
-(register-provider :emacs :for :editor :description "GNU Emacs with a minimal, fast-starting config"
+(define-provider :emacs :for :editor :description "GNU Emacs with a minimal, fast-starting config"
   (lambda (facts) ...))
 ```
 
@@ -1194,7 +1194,7 @@ provider itself should only apply under certain facts, independent of
 whether the feature was requested):
 
 ```lisp
-(register-provider :nvidia-proprietary :for :nvidia-drivers
+(define-provider :nvidia-proprietary :for :nvidia-drivers
   (lambda (facts)
     (when (eq (getf facts :gpu) :nvidia)
       (list '(:action :package :target :nvidia-driver :via :system)))))
@@ -1206,12 +1206,12 @@ I'll only auto-select the sole provider when there's exactly one *or*
 exactly one is marked `:default t`:
 
 ```lisp
-(register-provider :bash :for :shell :default t
+(define-provider :bash :for :shell :default t
   (lambda (facts) (declare (ignore facts))
     (list '(:action :package :target :bash :via :system)
           '(:action :copy-file :to "~/.bashrc" :from "bashrc")))
 
-(register-provider :zsh :for :shell
+(define-provider :zsh :for :shell
   (lambda (facts) (declare (ignore facts))
     (list '(:action :package :target :zsh :via :system)
           '(:action :copy-file :to "~/.zshrc" :from "zshrc"))))
@@ -1249,7 +1249,7 @@ needing to update the provider.
 The variables are accesible withing the provider as follows:
 
 ```lisp
-(register-provider :emacs
+(define-provider :emacs
   :for :editor
   :description "GNU Emacs"
   (lambda (facts)
@@ -1722,7 +1722,7 @@ linacs export -C ~/my-home --profile work-laptop -o /tmp/plan.sexp))
 
 **`list`** — every registered feature, provider, catalog, and action
 type, as aligned tables, each with whatever description you gave it (in
-`:description` on `define-feature`, `register-provider`, or a built-in
+`:description` on `define-feature`, `define-provider`, or a built-in
 action type's own documentation). Features get a combined view showing
 every provider registered for them in one row:
 

@@ -59,7 +59,7 @@
    ;; features / providers
     #:define-feature
     #:*feature-registry*
-    #:register-provider
+    #:define-provider
     #:find-provider
     #:find-providers-for
     #:resolve-feature-graph
