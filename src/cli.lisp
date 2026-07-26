@@ -159,6 +159,23 @@ PRUNE-P trait: [x] disabled+prune, [-] disabled only, [+] would-change,
   "Return a single-line legend string for the status glyphs."
   "[+] apply  [!] already present  [x] remove  [-] disabled")
 
+(defun colorize-glyph (glyph)
+  "Wrap GLYPH in bold ANSI color if stdout is a TTY and NO_COLOR is not set.
+Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
+  (if (and (interactive-stream-p *standard-output*)
+           (not (uiop:getenv "NO_COLOR")))
+      (let ((code (cdr (assoc glyph '(("[+]" . "1;33")
+                                      ("[v]"  . "1;32")
+                                      ("[!]"  . "1;33")
+                                      ("[x]"  . "1;31")
+                                      ("[~]"  . "1;33")
+                                      ("[-]"  . "1;33"))
+                              :test #'string=))))
+        (if code
+            (format nil "~C[~am~a~C[0m" #\Escape code glyph #\Escape)
+            glyph))
+      glyph))
+
 (defun apply-sudo-password-stdin ()
   "Read a sudo password from *standard-input* and cache it via sudo -S."
   (let ((password (read-line *standard-input* nil "")))
@@ -193,10 +210,13 @@ PRUNE-P trait: [x] disabled+prune, [-] disabled only, [+] would-change,
                                 (princ-to-string (action-target a))
                                 (if verbose (provenance-string id) "")))))
       (format t "Resolved plan for ~a (traits: ~a):~%~%" (getf home :name) (or (getf home :traits) "none"))
-      (if verbose
-          (print-table '("STATUS" "TYPE" "TARGET" "PROVENANCE") annotated)
-          (print-table '("STATUS" "TYPE" "TARGET")
-                       (mapcar (lambda (r) (subseq r 0 3)) annotated)))
+      (let ((display (mapcar (lambda (row)
+                               (cons (colorize-glyph (first row)) (rest row)))
+                             annotated)))
+        (if verbose
+            (print-table '("STATUS" "TYPE" "TARGET" "PROVENANCE") display)
+            (print-table '("STATUS" "TYPE" "TARGET")
+                         (mapcar (lambda (r) (subseq r 0 3)) display))))
       (let* ((to-apply (count "[+]" annotated :key #'first :test #'string=))
              (present (count "[!]" annotated :key #'first :test #'string=))
              (remove (count "[x]" annotated :key #'first :test #'string=))
@@ -251,9 +271,10 @@ PRUNE-P trait: [x] disabled+prune, [-] disabled only, [+] would-change,
   (let* ((tty-p (interactive-stream-p *query-io*))
          (target (princ-to-string (action-target action)))
          (type-name (string-downcase (string (action-type action))))
-         (glyph (if (and (eq phase :before) (getf action :disabled))
-                    "[x]"
-                    (apply-progress-glyph phase data))))
+         (raw-glyph (if (and (eq phase :before) (getf action :disabled))
+                        "[x]"
+                        (apply-progress-glyph phase data)))
+         (glyph (colorize-glyph raw-glyph)))
     (case phase
       (:before
        (when tty-p
@@ -389,8 +410,7 @@ we call execute-action separately to collect :would-change statuses."
     (let* ((prune-p (member :prune-explicitly-disabled (getf home :traits)))
            (verbose (>= (cli-opts-verbosity opts) 2)))
       (if verbose
-          (print-table '("#" "STATUS" "TYPE" "TARGET" "PROVENANCE" "FACTS INVOLVED")
-                       (loop for a in ordered for i from 1
+          (let* ((rows (loop for a in ordered for i from 1
                              for glyph = (action-status-glyph a prune-p)
                              for id = (action-identity a)
                              for facts-str = (let ((prov (action-provenance id)))
@@ -401,12 +421,23 @@ we call execute-action separately to collect :would-change statuses."
                                            (princ-to-string (action-target a))
                                            (provenance-string id)
                                            (or facts-str ""))))
-          (print-table '("#" "STATUS" "TYPE" "TARGET")
-                       (loop for a in ordered for i from 1
+                 (display (mapcar (lambda (row)
+                                    (destructuring-bind (num glyph &rest rest) row
+                                      (list* num (colorize-glyph glyph) rest)))
+                                  rows)))
+            (print-table '("#" "STATUS" "TYPE" "TARGET" "PROVENANCE" "FACTS INVOLVED")
+                         display))
+          (let* ((rows (loop for a in ordered for i from 1
                              for glyph = (action-status-glyph a prune-p)
                              collect (list (princ-to-string i) glyph
                                            (string-downcase (string (action-type a)))
-                                           (princ-to-string (action-target a)))))))
+                                           (princ-to-string (action-target a)))))
+                 (display (mapcar (lambda (row)
+                                    (destructuring-bind (num glyph &rest rest) row
+                                      (list* num (colorize-glyph glyph) rest)))
+                                  rows)))
+            (print-table '("#" "STATUS" "TYPE" "TARGET")
+                         display))))
     (format t "~%~d action(s).~%~a~%" (length ordered) (plan-summary-legend))))
 
 (defun cmd-graph (opts)
