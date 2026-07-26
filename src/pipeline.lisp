@@ -94,11 +94,15 @@ than aborting the entire run."
                   ((and (getf action :disabled) prune)
                    (execute-action action :mode (if (eq execute-mode :apply) :remove :check)))
                   ((getf action :disabled)
+                   (when *progress-reporter*
+                     (funcall *progress-reporter* action :skipped))
                    nil)
                   ((and continue-on-error
                         (some (lambda (dep) (gethash dep failed-ids))
                               (getf action :depends-on)))
                    (setf (gethash id *action-results*) (list :status :skipped))
+                   (when *progress-reporter*
+                     (funcall *progress-reporter* action :skipped))
                    (when (>= linacs.log:*verbosity* 2)
                      (linacs.log:info "Skipping ~a -- depends on prior failure" id)))
                   (t

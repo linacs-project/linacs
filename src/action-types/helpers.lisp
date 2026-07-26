@@ -107,6 +107,15 @@ built, or running in a CI environment)."
 of interactive password prompting, delegating to the askpass program
 specified by the environment variable.")
 
+(defvar *capture-subprocess-output* nil
+  "When non-nil, RUN-PRIVILEGED captures subprocess stdout/stderr into
+*CAPTURED-SUBPROCESS-LINES* instead of passing it through to the terminal.
+Set by CMD-APPLY in non-verbose mode.")
+
+(defvar *captured-subprocess-lines* nil
+  "List of (stream-keyword . string) pairs captured during the current
+action's subprocess calls.  Reset per action in EXECUTE-ACTION.")
+
 (defun sudo-n-or-a-prefix ()
   "Return (list \"sudo\" \"-n\") for cached-credential use, or
 (list \"sudo\" \"-A\") when SUDO_ASKPASS is set."
@@ -144,19 +153,40 @@ Signals EXECUTION-FAILURE if the command exits non-zero."
                      :target "credential validation"
                      :underlying (format nil "sudo -S true failed -- wrong password?")))))))
     (let* ((prefix (if needs-sudo-p (sudo-n-or-a-prefix) '()))
-           (cmd (append prefix args))
-           (exit-code (nth-value 2
-                         (uiop:run-program cmd :output t :error-output t
-                                           :input (when input
-                                                    (make-string-input-stream input))
-                                           :ignore-error-status t))))
+           (cmd (append prefix args)))
       (when needs-sudo-p
         (linacs.log:debug* "Privileged command: ~{~a~^ ~}" cmd))
-      (unless (zerop exit-code)
-        (error 'execution-failure :action-type :privileged-command
-               :target (format nil "~{~a~^ ~}" args)
-               :underlying (format nil "Command exited with status ~d." exit-code)))
-      exit-code)))
+      (if *capture-subprocess-output*
+          (let* ((out-str (make-string-output-stream))
+                 (err-str (make-string-output-stream))
+                 (exit-code (nth-value 2
+                                (uiop:run-program cmd
+                                                  :output out-str
+                                                  :error-output err-str
+                                                  :input (when input
+                                                           (make-string-input-stream input))
+                                                  :ignore-error-status t))))
+            (let ((out (get-output-stream-string out-str))
+                  (err (get-output-stream-string err-str)))
+              (when (plusp (length out))
+                (push (cons :stdout out) *captured-subprocess-lines*))
+              (when (plusp (length err))
+                (push (cons :stderr err) *captured-subprocess-lines*))
+              (unless (zerop exit-code)
+                (error 'execution-failure :action-type :privileged-command
+                       :target (format nil "~{~a~^ ~}" args)
+                       :underlying (format nil "Command exited with status ~d." exit-code)))
+              exit-code))
+          (let ((exit-code (nth-value 2
+                               (uiop:run-program cmd :output t :error-output t
+                                                 :input (when input
+                                                          (make-string-input-stream input))
+                                                 :ignore-error-status t))))
+            (unless (zerop exit-code)
+              (error 'execution-failure :action-type :privileged-command
+                     :target (format nil "~{~a~^ ~}" args)
+                     :underlying (format nil "Command exited with status ~d." exit-code)))
+            exit-code)))))
 
 (defun ensure-directories-with-escalation (dir)
   "Ensure DIR (and its parents) exist. Tries as the invoking user first;

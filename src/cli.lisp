@@ -234,27 +234,96 @@ PRUNE-P trait: [x] disabled+prune, [-] disabled only, [+] would-change,
           (error (e) (setf ok nil) (linacs.log:error* "Syntax error in home.lisp: ~a" e)))))
     (if ok (format t "Syntax OK.~%") (uiop:quit 1))))
 
+(defun apply-progress-glyph (phase &optional result-plist)
+  "Return the status glyph for a given apply-progress phase."
+  (case phase
+    (:before "[+]")
+    (:after (case (getf result-plist :status)
+              ((:changed :applied) "[v]")
+              (:removed "[v]")
+              (:unchanged "[!]")
+              (t "[v]")))
+    (:failed "[x]")
+    (:skipped "[~]")))
+
+(defun apply-progress-reporter (action phase &optional data)
+  "Progress reporter bound to *PROGRESS-REPORTER* during CMD-APPLY."
+  (let* ((tty-p (interactive-stream-p *query-io*))
+         (target (princ-to-string (action-target action)))
+         (type-name (string-downcase (string (action-type action))))
+         (glyph (if (and (eq phase :before) (getf action :disabled))
+                    "[x]"
+                    (apply-progress-glyph phase data))))
+    (case phase
+      (:before
+       (when tty-p
+         (format t "~C  ~a ~a ~a..." #\Return glyph type-name target)
+         (finish-output)))
+      (:after
+       (if tty-p
+           (format t "~C  ~a ~a ~a~%" #\Return glyph type-name target)
+           (format t "  ~a ~a ~a~%" glyph type-name target))
+       (finish-output))
+      (:failed
+       (if tty-p
+           (format t "~C  ~a ~a ~a~%" #\Return glyph type-name target)
+           (format t "  ~a ~a ~a~%" glyph type-name target))
+       (dolist (entry *captured-subprocess-lines*)
+         (format t "    ~a~%" (cdr entry)))
+       (finish-output))
+      (:skipped
+       (if tty-p
+           (format t "~C  ~a ~a ~a~%" #\Return glyph type-name target)
+           (format t "  ~a ~a ~a~%" glyph type-name target))
+       (finish-output)))))
+
+(defun print-apply-summary (ordered)
+  "Print a summary table and legend after CMD-APPLY completes."
+  (let* ((results *action-results*)
+         (rows (loop for a in ordered
+                     for id = (action-identity a)
+                     for result = (gethash id results)
+                     for status = (getf result :status)
+                     for glyph = (case status
+                                   ((:changed :applied :removed) "[v]")
+                                   (:unchanged "[!]")
+                                   (:failed "[x]")
+                                   (:skipped "[~]")
+                                   (t "[-]"))
+                     collect (list glyph
+                                   (string-downcase (string (action-type a)))
+                                   (princ-to-string (action-target a)))))
+         (counts (loop for v being the hash-value of results
+                       for status = (getf v :status)
+                       count status into total
+                       count (member status '(:changed :applied :removed)) into applied
+                       count (eq status :unchanged) into unchanged
+                       count (eq status :failed) into failed
+                       count (eq status :skipped) into skipped
+                       finally (return (list total applied unchanged failed skipped)))))
+    (format t "~%")
+    (print-table '("STATUS" "TYPE" "TARGET") rows)
+    (destructuring-bind (total applied unchanged failed skipped) counts
+      (format t "~%~d action(s): ~d applied, ~d unchanged~@[, ~d failed~]~@[, ~d skipped~]~%"
+              total applied unchanged
+              (if (plusp failed) failed 0)
+              (if (plusp skipped) skipped 0))
+      (format t "[v] applied  [!] unchanged  [x] failed  [~~] skipped~%"))))
+
 (defun cmd-apply (opts)
   (bootstrap opts)
   (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
   (let* ((verbose (>= (cli-opts-verbosity opts) 2))
-         (ordered (run-pipeline :profile (cli-opts-profile opts) :project-root (cli-opts-root opts)
-                               :execute-mode (if (cli-opts-dry-run opts) :check :apply)
-                               :continue-on-error (cli-opts-continue-on-error opts))))
-    (when (and ordered verbose (not (cli-opts-dry-run opts)))
-      (let* ((results *action-results*)
-              (counts (loop for k being the hash-key of results using (hash-value v)
-                            for status = (getf v :status)
-                            count status into total
-                            count (eq status :changed) into applied
-                            count (eq status :unchanged) into unchanged
-                            count (eq status :failed) into failed
-                            count (eq status :skipped) into skipped
-                            finally (return (list total applied unchanged failed skipped)))))
-        (destructuring-bind (total applied unchanged failed skipped) counts
-          (format t "~%Summary: ~d action(s) processed (~d applied, ~d unchanged, ~d failed~@[, ~d skipped~]).~%"
-                  total applied unchanged failed (if (> skipped 0) skipped 0))))))
-  (sudo-reset-after-run opts))
+         (*capture-subprocess-output* (and (not verbose) (not (cli-opts-dry-run opts))))
+         (*progress-reporter* (and (not (cli-opts-dry-run opts))
+                                   #'apply-progress-reporter))
+         (*captured-subprocess-lines* nil))
+    (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
+                                                      :project-root (cli-opts-root opts)
+                                                      :execute-mode (if (cli-opts-dry-run opts) :check :apply)
+                                                      :continue-on-error (cli-opts-continue-on-error opts))
+      (declare (ignore ordered home))
+      (sudo-reset-after-run opts))))
 
 (defun cmd-diff (opts)
   "Resolve the plan and check each action against current system state.

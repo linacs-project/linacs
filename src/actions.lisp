@@ -41,6 +41,22 @@ and never consulted in normal operation -- zero overhead during execution.")
 or :skipped, and optionally :error for failures). Populated during pipeline
 step 5 by EXECUTE-ACTION. Used by --continue mode.")
 
+(defvar *progress-reporter* nil
+  "When non-nil, a function of (action phase &optional data) called by
+EXECUTE-ACTION before and after each action execution.  PHASE is :BEFORE,
+:AFTER, or :FAILED.  For :AFTER, DATA is the result plist.  For
+:FAILED, DATA is the condition.")
+
+(defvar *capture-subprocess-output* nil
+  "When non-nil, RUN-PRIVILEGED in helpers.lisp captures subprocess stdout/stderr
+into *CAPTURED-SUBPROCESS-LINES* instead of passing them through to the terminal.
+Used by `linacs apply` to show live progress glyphs without subprocess noise.")
+
+(defvar *captured-subprocess-lines* nil
+  "List of (stream-type . string) entries captured during subprocess execution
+when *CAPTURE-SUBPROCESS-OUTPUT* is non-nil.  Reset per-action in
+EXECUTE-ACTION.  Stream-type is :STDOUT or :STDERR.")
+
 (defun register-action-type (type executor-fn &key description)
   (setf (gethash type *action-types*) executor-fn)
   (when description (setf (gethash type *action-type-descriptions*) description)))
@@ -188,10 +204,13 @@ ignores :depends-on edges that reference an identity not present in ACTIONS
 (defun execute-action (action &key (mode :apply))
   "Dispatch ACTION to its registered executor under MODE (:apply or :check).
 Records the outcome in *ACTION-RESULTS* for --continue support and verbose
-progress reporting."
+progress reporting.  Calls *PROGRESS-REPORTER* (if bound) before and after."
   (let* ((id (action-identity action))
          (executor (find-executor (action-type action)))
          result status)
+    (setf *captured-subprocess-lines* nil)
+    (when *progress-reporter*
+      (funcall *progress-reporter* action :before))
     (with-linacs-restarts ()
       (handler-case
           (progn
@@ -201,12 +220,18 @@ progress reporting."
               (unless status
                 (setf status :applied))
               (setf (gethash id *action-results*) (list :status status)))
+            (when *progress-reporter*
+              (funcall *progress-reporter* action :after result))
             (values result status))
         (linacs-error (e)
           (setf (gethash id *action-results*) (list :status :failed :error e))
+          (when *progress-reporter*
+            (funcall *progress-reporter* action :failed e))
           (error e))
         (error (e)
           (setf (gethash id *action-results*) (list :status :failed :error e))
+          (when *progress-reporter*
+            (funcall *progress-reporter* action :failed e))
           (error 'execution-failure
                  :action-type (action-type action)
                  :target (action-target action)
