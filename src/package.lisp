@@ -60,10 +60,13 @@
    #:register-catalog
    #:catalog-lookup
 
-   ;; features / providers
-    #:define-feature
-    #:*feature-registry*
-    #:define-provider
+    ;; features / providers
+     #:define-feature
+     #:*feature-registry*
+     #:define-provider
+     #:feature-custom
+     #:register-feature-customs
+     #:clear-feature-customs
     #:find-provider
     #:find-providers-for
     #:resolve-feature-graph

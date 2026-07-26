@@ -216,17 +216,17 @@ report is consistent whether or not anything is registered."
                                :continue-on-error (cli-opts-continue-on-error opts))))
     (when (and ordered verbose (not (cli-opts-dry-run opts)))
       (let* ((results *action-results*)
-             (counts (loop for k being the hash-key of results using (hash-value v)
-                           for status = (getf v :status)
-                           count status into total
-                           count (eq status :applied) into applied
-                           count (eq status :already-met) into already
-                           count (eq status :failed) into failed
-                           count (eq status :skipped) into skipped
-                           finally (return (list total applied already failed skipped)))))
-        (destructuring-bind (total applied already failed skipped) counts
+              (counts (loop for k being the hash-key of results using (hash-value v)
+                            for status = (getf v :status)
+                            count status into total
+                            count (eq status :changed) into applied
+                            count (eq status :unchanged) into unchanged
+                            count (eq status :failed) into failed
+                            count (eq status :skipped) into skipped
+                            finally (return (list total applied unchanged failed skipped)))))
+        (destructuring-bind (total applied unchanged failed skipped) counts
           (format t "~%Summary: ~d action(s) processed (~d applied, ~d unchanged, ~d failed~@[, ~d skipped~]).~%"
-                  total applied already failed (if (> skipped 0) skipped 0))))))
+                  total applied unchanged failed (if (> skipped 0) skipped 0))))))
   (sudo-reset-after-run opts))
 
 (defun cmd-diff (opts)

@@ -79,8 +79,7 @@ With KEY:    returns (getf custom key), or NIL if key not present."
   "Set custom for a feature. If KEY is provided, sets a single key in the
 existing custom plist; otherwise replaces the entire custom."
   (if key
-      (let ((custom (gethash name *feature-customs*)))
-        (setf (getf custom key) value))
+      (setf (getf (gethash name *feature-customs*) key) value)
       (setf (gethash name *feature-customs*) value))
   value)
 
