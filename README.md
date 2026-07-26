@@ -230,6 +230,42 @@ You write your own the same way. Drop a `linacs-*` ASDF system in your Quicklisp
 
 ---
 
+## CLI reference
+
+```text
+linacs <command> [options]
+```
+
+| Command | What it does |
+|---------|-------------|
+| `plan` | Show the resolved, ordered action list — what will happen |
+| `apply` | Execute the ordered action list — make it so |
+| `diff` | Show which actions would change something |
+| `validate` | Check syntax only (balanced parens, valid forms) |
+| `check` | Fully resolve configuration without executing anything |
+| `explain` | Print the resolved feature graph and action order |
+| `graph` | Print the abstract feature dependency DAG |
+| `export` | Write the action list as a data s-expression |
+| `list` | List registered features, providers, catalogs, action types |
+| `facts` | Print resolved facts, after probing and profile merge |
+| `doctor` | Diagnose the environment and provider coverage |
+| `init` | Scaffold a new home project |
+| `version` | Print the LINACS version |
+
+| Option | Effect |
+|--------|--------|
+| `-C, --root DIR` | Project root (default `.`) |
+| `-p, --platform NAME` | Target platform (default: auto-detect) |
+| `--profile NAME` | Select a defined profile for fact overrides |
+| `--provider T=P` | Prefer provider P for feature T |
+| `-n, --dry-run` | Show changes without executing them |
+| `--continue` | Keep going after a failed action |
+| `-o, --output FILE` | Write output to FILE (for `export`) |
+| `-v, --verbose` | Increase verbosity (repeat for debug) |
+| `--quiet` | Only show errors |
+
+---
+
 ## Where to go next
 
 | What | Where |
