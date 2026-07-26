@@ -65,7 +65,8 @@ than aborting the entire run."
   (clrhash *action-results*)
 
   (let* ((home (run-current-home-thunk))
-         (ignored (register-feature-customs (getf home :use-features)))
+          (*package-preference-chain* (or (getf home :package-preference) '(:system)))
+          (ignored (register-feature-customs (getf home :use-features)))
          (provider-actions (collect-actions-from-features (getf home :use-features)))
          (user-actions (mapcar (lambda (a)
                                  (let* ((id (action-identity a))

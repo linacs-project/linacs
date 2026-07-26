@@ -622,6 +622,10 @@ The root of your project. Exactly one per project.
     (use-feature :editor :via :emacs))
   ```
 
+- `(package-preference :toolbox :flatpak :system)` sets the global
+  auto-selection chain for packages that don't specify `:via` explicitly.
+  See §5.7 for details.
+
 Everything else inside the body is one of the forms below, or a standard
 Lisp conditional wrapping them.
 
@@ -861,6 +865,41 @@ These work exactly like the built-in `:via` options — the same
 idempotency, the same `:disabled t` removal semantics, the same
 dependencies. No core changes needed; just load the plugin and use the
 keyword.
+
+**Auto-selection with `package-preference`.** When you omit `:via`
+from a `(package ...)` form, I pick the best method automatically
+based on a global chain you declare once in `define-home`:
+
+```lisp
+(define-home my-home
+  (package-preference :toolbox :flatpak :system)
+  (package :ripgrep)                ;; picks :toolbox if available
+  (package :emacs)                  ;; then :flatpak
+  (package "org.videolan.VLC")      ;; then :system
+  ...)
+```
+
+I walk the chain in order and use the first method whose
+corresponding fact is true (`:toolbox` → `(fact :toolbox-p)`).
+`:system` is always available. If nothing in the chain is
+available, I warn and fall back to `:system`.
+
+You can still write an explicit `:via` to bypass auto-selection
+for a single package:
+
+```lisp
+(package :emacs :via :flatpak)         ;; always flatpak, no matter the chain
+```
+
+Provider-authors can attach a `:via-preference` key to individual
+actions to override the global chain for that specific package,
+while still allowing the executor to auto-select among the listed
+methods:
+
+```lisp
+(:action :package :target :firewalld
+         :via-preference (:toolbox :system))
+```
 
 **Marked for removal:**
 
@@ -1136,6 +1175,24 @@ whole thing:**
 ```lisp
 (register-catalog :packages :emacs '((:void . "emacs-nox")))
 ```
+
+**Per-via catalog entries.** By default, catalog entries are resolved
+for `:via :system` (the distro key). You can add entries for other
+method types too — useful when a canonical keyword needs a different
+name for Flatpak, pip, or a containerized install:
+
+```lisp
+(define-catalog :packages
+  (:emacs (:fedora . "emacs-pgtk") (:ubuntu . "emacs-nox")
+          (:flatpak . "org.gnu.emacs"))
+  (:firefox (:flatpak . "org.mozilla.firefox")
+            (:fedora . "firefox") (:ubuntu . "firefox")))
+```
+
+When I resolve a package action with `:via :flatpak`, I look for a
+`(:flatpak . "name")` entry first, falling back to the keyword's own
+name if none is found. Old `(:distro . "name")` entries continue to
+work unchanged and are treated as `:system`-via entries.
 
 ### 5.17 Features
 

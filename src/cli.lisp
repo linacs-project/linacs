@@ -665,7 +665,7 @@ or a clear diagnosis of why it can't resolve -- used by `linacs doctor`."
     (let ((home-file (merge-pathnames "home.lisp" root)))
       (unless (probe-file home-file)
         (with-open-file (s home-file :direction :output)
-          (format s ";;;; home.lisp~%(define-home my-home~%  :traits (:prune-explicitly-disabled))~%"))))
+          (format s ";;;; home.lisp~%(define-home my-home~%  :traits (:prune-explicitly-disabled)~%  (package-preference :system))~%"))))
     (format t "Initialized LINACS project at ~a~%" root)))
 
 (defun cmd-version (opts)

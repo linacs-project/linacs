@@ -125,8 +125,9 @@
    #:file
    #:directory
    #:symlink
-   #:package
-   #:secret
+    #:package
+    #:package-preference
+    #:secret
    #:env-var
    #:config-lines
    #:config-ini

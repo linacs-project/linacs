@@ -26,6 +26,10 @@
 (defvar *action-types* (make-hash-table :test 'eq)
   "Maps action type keyword -> executor function of (action &key mode).")
 
+(defvar *package-preference-chain* '(:system)
+  "Ordered list of :via methods to try when a :package action has no :via.
+Set during RUN-PIPELINE from the home's (package-preference ...) declaration.")
+
 (defvar *action-type-descriptions* (make-hash-table :test 'eq)
   "Maps action type keyword -> a one-line human-readable description, for
 `linacs list` and similar reporting. Purely documentation; never consulted

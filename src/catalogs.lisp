@@ -42,13 +42,18 @@ that extend an existing catalog (e.g. linacs-catalog-nix)."
           (append (gethash canonical-key table) distro-alist))
 ))
 
-(defun catalog-lookup (catalog-name canonical-key distro)
-  "Resolve CANONICAL-KEY through CATALOG-NAME for DISTRO. If the keyword
-isn't in the catalog, gracefully fall back to the keyword's symbol name
- (or, if CANONICAL-KEY is already a string -- as with user-level `package`
-declarations like (package \"vim\" ...) -- the string itself)."
+(defun catalog-lookup (catalog-name canonical-key distro &key via)
+  "Resolve CANONICAL-KEY through CATALOG-NAME for DISTRO and VIA. If VIA is
+non-nil and not :system, look for a `(:via-keyword . \"name\")` entry first;
+for :system (or when VIA is nil/omitted), use the existing distro-keyed entry
+`(:distro . \"name\")`.  In either case, if nothing is found, fall back to the
+keyword's symbol name (or the string itself if CANONICAL-KEY is already a
+string -- as with user-level `package` declarations like (package \"vim\" ...))."
   (let* ((table (gethash catalog-name *catalogs*))
          (entry (and table (gethash canonical-key table)))
-         (found (and entry (cdr (assoc distro entry)))))
+         (found (and entry
+                     (if (and via (not (eq via :system)))
+                         (cdr (assoc via entry))
+                         (cdr (assoc distro entry))))))
     (or found
         (if (stringp canonical-key) canonical-key (string-downcase (symbol-name canonical-key))))))

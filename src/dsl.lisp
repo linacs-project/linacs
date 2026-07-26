@@ -38,12 +38,20 @@
   "The captured, not-yet-run body of the most recently loaded DEFINE-HOME.")
 (defvar *current-home-use-features* nil)
 (defvar *current-home-actions* nil)
+(defvar *current-home-package-preference* nil
+  "Set by the PACKAGE-PREFERENCE form inside DEFINE-HOME.")
 
 (defun location-from-load-pathname ()
   "Capture the file being loaded at macroexpansion time."
   (list :file (or (ignore-errors (namestring *load-pathname*))
                   (ignore-errors (namestring *compile-file-pathname*))
                   "<unknown>")))
+
+(defmacro package-preference (&rest chain)
+  "Declare the ordered list of :via methods to try for (package ...) forms
+that don't specify :via explicitly.  E.g. (package-preference :flatpak :system).
+Only usable inside DEFINE-HOME."
+  `(setf *current-home-package-preference* ',chain))
 
 (defmacro define-home (name &rest body)
   "Capture NAME, an optional :traits (...), and the remaining forms as a
@@ -54,16 +62,18 @@ project; loading a second one simply replaces the captured thunk."
         (setf traits (cadr body) forms (cddr body))
         (setf forms body))
     `(setf *current-home-thunk*
-           (lambda ()
-             (setf *current-home-name* ',name)
-             (setf *current-home-traits* ',traits)
-             (setf *current-home-use-features* nil)
-             (setf *current-home-actions* nil)
-             ,@forms
-             (list :name ',name
-                   :traits ',traits
-                   :use-features (reverse *current-home-use-features*)
-                   :actions (reverse *current-home-actions*))))))
+            (lambda ()
+              (setf *current-home-name* ',name)
+              (setf *current-home-traits* ',traits)
+              (setf *current-home-use-features* nil)
+              (setf *current-home-actions* nil)
+              (setf *current-home-package-preference* nil)
+              ,@forms
+              (list :name ',name
+                    :traits ',traits
+                    :use-features (reverse *current-home-use-features*)
+                    :actions (reverse *current-home-actions*)
+                    :package-preference *current-home-package-preference*)))))
 
 (defun run-current-home-thunk ()
   (unless *current-home-thunk*
