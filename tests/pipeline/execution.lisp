@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite pipeline-execution
+  :in linacs-tests
   :description "Tests for pipeline execution")
+(in-suite pipeline-execution)
 
 (def-test simple-pipeline-execution ()
   "Simple pipeline execution works"

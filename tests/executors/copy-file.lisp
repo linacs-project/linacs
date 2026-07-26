@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite executor-copy-file
+  :in linacs-tests
   :description "Tests for copy-file executor")
+(in-suite executor-copy-file)
 
 (def-test copy-file-identity ()
   "Copy file action has correct identity"

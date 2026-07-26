@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite profile-metadata
+  :in linacs-tests
   :description "Tests for profile fact-override metadata warnings")
+(in-suite profile-metadata)
 
 (def-test profile-applies-overrides ()
   "apply-profile merges overrides into *facts*"

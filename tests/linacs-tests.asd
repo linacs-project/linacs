@@ -22,11 +22,28 @@
               :serial t
               :components
               ((:file "graph")))
-     (:module "pipeline"
-              :serial t
-              :components
-              ((:file "execution")))
-     (:module "executors"
+      (:module "pipeline"
+               :serial t
+               :components
+               ((:file "execution")
+                (:file "disabled-actions")))
+      (:module "cli"
+               :serial t
+               :components
+               ((:file "flag-parsing")))
+      (:module "facts"
+               :serial t
+               :components
+               ((:file "schema")))
+      (:module "privilege"
+               :serial t
+               :components
+               ((:file "basics")))
+      (:module "profiles"
+               :serial t
+               :components
+               ((:file "metadata")))
+      (:module "executors"
               :serial t
               :components
               ((:file "copy-file")

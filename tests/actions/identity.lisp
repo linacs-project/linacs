@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite action-identity
+  :in linacs-tests
   :description "Tests for action identity computation")
+(in-suite action-identity)
 
 (def-test simple-identity ()
   "Simple action types have straightforward identities"

@@ -35,59 +35,79 @@ Returns a flat list of provider-tagged action plists."
     (dolist (r use-feature-requests) (setf (gethash (getf r :feature) via-table) (getf r :via)))
     (loop for fname in ordered-features
           append (let* ((via (gethash fname via-table))
-                        (provider-fn (select-provider fname via))
-                        (raw-actions (funcall provider-fn *facts*)))
-                   (mapcar (lambda (a)
-                             (append (copy-list a)
-                                     (list :priority :provider
-                                           :source (format nil "provider for feature ~a" fname))))
-                           raw-actions)))))
+                        (ignored (reset-facts-read)))
+                   (declare (ignore ignored))
+                   (multiple-value-bind (provider-fn provider-name)
+                       (select-provider fname via)
+                     (let ((raw-actions (funcall provider-fn *facts*)))
+                       (mapcar (lambda (a)
+                                 (let* ((id (action-identity a))
+                                        (prov (list :feature fname
+                                                    :provider provider-name
+                                                    :facts-snapshot (snapshot-facts-read))))
+                                   (register-provenance id prov)
+                                   (append (copy-list a)
+                                           (list :priority :provider
+                                                 :source (format nil "provider ~a for feature ~a"
+                                                                 provider-name fname)))))
+                               raw-actions)))))))
 
-(defun run-pipeline (&key profile project-root (execute-mode :apply))
+(defun run-pipeline (&key profile project-root (execute-mode :plan-only) continue-on-error)
   "Run Execution Model steps 1-5 against the already-discovered home
 definition (i.e. discovery, step 0, must already have run via
 DISCOVER-PLUGINS / DISCOVER-PROJECT). EXECUTE-MODE is :apply, :check, or
-:plan-only (resolve/order but do not call EXECUTE-ACTION at all)."
-  ;; Step 1: probe facts, then merge selected profile.
+:plan-only (resolve/order but do not call EXECUTE-ACTION at all).
+CONTINUE-ON-ERROR means skip failed actions and their dependents rather
+than aborting the entire run."
+
   (probe-all-facts)
   (apply-profile profile)
+  (clrhash *action-results*)
 
-  ;; Step 2: walk the feature graph + collect user-level forms.
   (let* ((home (run-current-home-thunk))
-         ;; Populate *feature-customs* so providers can read it
          (ignored (register-feature-customs (getf home :use-features)))
          (provider-actions (collect-actions-from-features (getf home :use-features)))
-         (user-actions (mapcar (lambda (a) (append (copy-list a) (list :project-root project-root)))
+         (user-actions (mapcar (lambda (a)
+                                 (let* ((id (action-identity a))
+                                        (loc (getf a :location))
+                                        (prov (list :source (or (getf a :source) "user")
+                                                    :location loc)))
+                                   (register-provenance id prov)
+                                   (append (copy-list a) (list :project-root project-root))))
                                (getf home :actions)))
          (all-actions (append user-actions provider-actions)))
-
-    ;; Silence the compiler
     (declare (ignore ignored))
-
     (run-hooks :after-resolve *facts* all-actions)
 
-    ;; Step 3: deduplicate.
     (let ((deduped (dedup-actions all-actions)))
-
-      ;; Step 4: order topologically.
       (let ((ordered (order-actions deduped)))
-
         (run-hooks :before-execute *facts* ordered)
 
         (unless (eq execute-mode :plan-only)
-          ;; Informational only -- never blocks.
           (preflight-notice ordered)
 
-          ;; Step 5: execute (or check) each action's built-in executor, in order,
-          ;; honoring :disabled + the :prune-explicitly-disabled trait.
-          (let ((prune (member :prune-explicitly-disabled (getf home :traits))))
+          (let* ((prune (member :prune-explicitly-disabled (getf home :traits)))
+                 (failed-ids (make-hash-table :test 'equal)))
             (dolist (action ordered)
-              (if (and (getf action :disabled) prune)
-                  ;; Pruning disabled actions: respect execute-mode
-                  (if (eq execute-mode :apply)
-                      (execute-action action :mode :remove)
-                      (execute-action action :mode :check))
-                  (unless (getf action :disabled)
-                    (execute-action action :mode execute-mode))))))
-
+              (let ((id (action-identity action)))
+                (cond
+                  ((and (getf action :disabled) prune)
+                   (execute-action action :mode (if (eq execute-mode :apply) :remove :check)))
+                  ((getf action :disabled)
+                   nil)
+                  ((and continue-on-error
+                        (some (lambda (dep) (gethash dep failed-ids))
+                              (getf action :depends-on)))
+                   (setf (gethash id *action-results*) (list :status :skipped))
+                   (when (>= linacs.log:*verbosity* 2)
+                     (linacs.log:info "Skipping ~a -- depends on prior failure" id)))
+                  (t
+                   (handler-case
+                       (execute-action action :mode execute-mode)
+                     (linacs-error (e)
+                       (setf (gethash id *action-results*) (list :status :failed :error e))
+                       (setf (gethash id failed-ids) t)
+                       (if continue-on-error
+                           (linacs.log:warn* "~a failed; continuing" id)
+                           (error e))))))))))
         (values ordered home)))))

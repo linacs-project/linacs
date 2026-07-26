@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite feature-graph
+  :in linacs-tests
   :description "Tests for feature graph resolution")
+(in-suite feature-graph)
 
 (def-test simple-feature-graph ()
   "Simple feature dependency graph works"

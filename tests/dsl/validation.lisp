@@ -1,6 +1,7 @@
 (in-package #:linacs-tests)
 
 (def-suite dsl-validation
+  :in linacs-tests
   :description "Tests for DSL validation and error handling")
 
 (in-suite dsl-validation)

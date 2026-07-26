@@ -20,22 +20,24 @@
         (uiop:read-file-string src-path))))
 
 (defun execute-copy-file (action &key mode)
-  (let* ((to (expand-home (getf action :target (getf action :to))))
-         (intended (copy-file-intended-content action))
-         (current (read-file-string to))
-         (changed (not (equal intended current))))
+  (let ((to (expand-home (getf action :target (getf action :to)))))
     (case mode
-      (:check (report (if changed :would-change :unchanged) :target to))
-      (:apply
-       (when changed
-         (write-file-with-escalation to intended)
-         (apply-file-ownership to action))
-       (report (if changed :changed :unchanged) :target to))
       (:remove
        (when (probe-file to)
          (handler-case (delete-file to)
-           (error () (run-privileged (list "rm" "-f" to)))))
-       (report :removed :target to)))))
+           (error () (run-privileged (list "rm" "-f" (namestring to))))))
+       (report :removed :target to))
+      (t
+       (let* ((intended (copy-file-intended-content action))
+              (current (read-file-string to))
+              (changed (not (equal intended current))))
+         (case mode
+           (:check (report (if changed :would-change :unchanged) :target to))
+           (:apply
+            (when changed
+              (write-file-with-escalation to intended)
+              (apply-file-ownership to action))
+            (report (if changed :changed :unchanged) :target to))))))))
 
 (register-action-type :copy-file #'execute-copy-file
   :description "Copy or render a file to a target path")

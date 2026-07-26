@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite action-deduplication
+  :in linacs-tests
   :description "Tests for action deduplication")
+(in-suite action-deduplication)
 
 (def-test simple-deduplication ()
   "Identical actions are deduplicated"

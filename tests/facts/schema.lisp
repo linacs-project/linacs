@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite fact-schema
+  :in linacs-tests
   :description "Tests for fact metadata schema and type validation")
+(in-suite fact-schema)
 
 (def-test register-prober-with-metadata ()
   "Registering a fact prober with :type and :doc populates *fact-metadata*"

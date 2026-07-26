@@ -42,8 +42,12 @@
     #:register-fact-prober
     #:probe-all-facts
     #:fact
+    #:fact*
     #:fact-known-p
     #:*facts*
+    #:*facts-read*
+    #:reset-facts-read
+    #:snapshot-facts-read
     #:*fact-probers*
     #:*fact-metadata*
     #:default-fact-probers
@@ -77,6 +81,11 @@
    #:dedup-actions
    #:order-actions
    #:register-package-via-handler
+   #:*provenance*
+   #:register-provenance
+   #:action-provenance
+   #:*action-results*
+   #:action-result-status
 
    ;; secrets / templates
    #:resolve-secret

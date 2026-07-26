@@ -42,6 +42,11 @@
   "Plist of resolved facts, populated by PROBE-ALL-FACTS and merged with
 a profile's overrides. Read via FACT.")
 
+(defvar *facts-read* (make-hash-table :test 'eq)
+  "Set of fact keys read during the current provider invocation. Populated
+by FACT* and reset before each provider call. Used for provenance tracking
+so the :facts-snapshot only includes facts the provider actually consulted.")
+
 (defvar *fact-metadata* (make-hash-table :test 'eq)
   "Maps fact key -> plist with :type (CL type specifier) and :doc (string).
 Populated by REGISTER-FACT-PROBER when :type and/or :doc are supplied.")
@@ -64,8 +69,8 @@ Optional keyword arguments:
     (setf (gethash key *fact-probers*) (cons prober-fn registrant)))
   (when (or type doc)
     (setf (gethash key *fact-metadata*)
-          (nconc (when type (list :type type))
-                 (when doc (list :doc doc)))))
+          (append (when type (list :type type))
+                  (when doc (list :doc doc)))))
   key)
 
 (defun default-fact-probers ()
@@ -467,3 +472,21 @@ regardless of its value.  Returns NIL if KEY was never probed
 (e.g. a misspelling or a prober that was never registered)."
   (let ((sentinel (make-symbol "FACT-NOT-FOUND")))
     (not (eq sentinel (getf *facts* key sentinel)))))
+
+(defun fact* (key)
+  "Like FACT but also records KEY in *FACTS-READ* for provenance tracking.
+Provider authors should use this instead of FACT when the provider wants
+its fact dependencies to appear in the :facts-snapshot provenance field.
+Using plain FACT is still fine for internal code that shouldn't appear
+in provenance traces."
+  (setf (gethash key *facts-read*) t)
+  (getf *facts* key))
+
+(defun reset-facts-read ()
+  "Clear *FACTS-READ*. Called before each provider invocation."
+  (clrhash *facts-read*))
+
+(defun snapshot-facts-read ()
+  "Return the list of fact keys read since the last RESET-FACTS-READ,
+suitable for embedding in a :facts-snapshot provenance plist."
+  (loop for k being the hash-key of *facts-read* collect k))

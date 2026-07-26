@@ -1,6 +1,7 @@
 (in-package #:linacs-tests)
 
 (def-suite dsl-macros
+  :in linacs-tests
   :description "Tests for DSL macro syntax and validation")
 
 (in-suite dsl-macros)

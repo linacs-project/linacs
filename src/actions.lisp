@@ -14,6 +14,15 @@
 
 (in-package :linacs.core)
 
+(deftype action-plist ()
+  "A valid action plist has at minimum an :ACTION keyword and a :TARGET."
+  '(and list (satisfies action-plist-p)))
+
+(defun action-plist-p (plist)
+  (and (consp plist)
+       (getf plist :action)
+       (getf plist :target)))
+
 (defvar *action-types* (make-hash-table :test 'eq)
   "Maps action type keyword -> executor function of (action &key mode).")
 
@@ -21,6 +30,16 @@
   "Maps action type keyword -> a one-line human-readable description, for
 `linacs list` and similar reporting. Purely documentation; never consulted
 by resolution or execution.")
+
+(defvar *provenance* (make-hash-table :test 'equal)
+  "Maps action identity -> provenance plist (:feature :provider :facts-snapshot
+or :source :location for user-level actions). Populated during pipeline step 2
+and never consulted in normal operation -- zero overhead during execution.")
+
+(defvar *action-results* (make-hash-table :test 'equal)
+  "Maps action identity -> result plist (:status :applied :already-met :failed
+or :skipped, and optionally :error for failures). Populated during pipeline
+step 5 by EXECUTE-ACTION. Used by --continue mode.")
 
 (defun register-action-type (type executor-fn &key description)
   (setf (gethash type *action-types*) executor-fn)
@@ -64,6 +83,20 @@ content matters beyond the bare target:
       ((eq type :firewall)
        (list* :firewall (getf action :protocol "tcp") (action-target action)))
       (t (cons type (action-target action))))))
+
+(defun register-provenance (action-id provenance)
+  "Record PROVENANCE plist for ACTION-ID in *PROVENANCE*."
+  (setf (gethash action-id *provenance*) provenance))
+
+(defun action-provenance (action-id)
+  "Retrieve the provenance plist for ACTION-ID from *PROVENANCE*, or NIL."
+  (gethash action-id *provenance*))
+
+(defun action-result-status (action-id)
+  "Retrieve the result status (:applied :already-met :failed :skipped) for
+ACTION-ID from *ACTION-RESULTS*, or NIL if not yet executed."
+  (let ((result (gethash action-id *action-results*)))
+    (and result (getf result :status))))
 
 (defun action-source-label (action)
   "Human-readable label of where ACTION came from, for conflict reports."
@@ -153,12 +186,27 @@ ignores :depends-on edges that reference an identity not present in ACTIONS
     (nreverse result)))
 
 (defun execute-action (action &key (mode :apply))
-  "Dispatch ACTION to its registered executor under MODE (:apply or :check)."
-  (let ((executor (find-executor (action-type action))))
+  "Dispatch ACTION to its registered executor under MODE (:apply or :check).
+Records the outcome in *ACTION-RESULTS* for --continue support and verbose
+progress reporting."
+  (let* ((id (action-identity action))
+         (executor (find-executor (action-type action)))
+         result status)
     (with-linacs-restarts ()
-      (handler-case (funcall executor action :mode mode)
-        (linacs-error (e) (error e))
+      (handler-case
+          (progn
+            (setf result (funcall executor action :mode mode))
+            (setf status (getf result :status))
+            (when (and mode (eq mode :apply))
+              (unless status
+                (setf status :applied))
+              (setf (gethash id *action-results*) (list :status status)))
+            (values result status))
+        (linacs-error (e)
+          (setf (gethash id *action-results*) (list :status :failed :error e))
+          (error e))
         (error (e)
+          (setf (gethash id *action-results*) (list :status :failed :error e))
           (error 'execution-failure
                  :action-type (action-type action)
                  :target (action-target action)

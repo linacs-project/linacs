@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite privilege-basics
+  :in linacs-tests
   :description "Tests for privilege detection and preflight notice")
+(in-suite privilege-basics)
 
 (def-test action-needs-privilege-detects-package ()
   "action-needs-privilege-p returns T for :package actions"

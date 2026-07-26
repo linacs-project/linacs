@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite action-ordering
+  :in linacs-tests
   :description "Tests for action ordering with dependencies")
+(in-suite action-ordering)
 
 (def-test simple-ordering ()
   "Actions are ordered correctly"

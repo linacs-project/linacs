@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite cli-flag-parsing
+  :in linacs-tests
   :description "Tests for CLI option flag parsing")
+(in-suite cli-flag-parsing)
 
 (def-test parse-sudo-password-stdin ()
   "--sudo-password-stdin sets cli-opts-sudo-password-stdin to T"

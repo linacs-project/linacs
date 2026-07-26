@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite executor-symlink
+  :in linacs-tests
   :description "Tests for symlink executor")
+(in-suite executor-symlink)
 
 (def-test symlink-identity ()
   "Symlink action has correct identity"

@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite executor-service
+  :in linacs-tests
   :description "Tests for service executor")
+(in-suite executor-service)
 
 (def-test service-identity ()
   "Service action has correct identity"

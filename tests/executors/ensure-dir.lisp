@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite executor-ensure-dir
+  :in linacs-tests
   :description "Tests for ensure-dir executor")
+(in-suite executor-ensure-dir)
 
 (def-test ensure-dir-identity ()
   "Ensure dir action has correct identity"

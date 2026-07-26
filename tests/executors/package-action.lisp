@@ -1,7 +1,9 @@
 (in-package #:linacs-tests)
 
 (def-suite executor-package-action
+  :in linacs-tests
   :description "Tests for package-action executor")
+(in-suite executor-package-action)
 
 (def-test package-action-identity ()
   "Package action has correct identity"
