@@ -264,6 +264,47 @@ linacs <command> [options]
 | `-v, --verbose` | Increase verbosity (repeat for debug) |
 | `--quiet` | Only show errors |
 
+## What you see when you run me
+
+I tell you what I *will* do before I do it. Every action gets a status glyph so you know, at a glance, what's about to happen:
+
+```
+$ linacs plan
+Resolved plan for JANS-MACHINE (traits: (PRUNE-EXPLICITLY-DISABLED)):
+  STATUS  TYPE           TARGET
+  ------  -------------  -----------------------
+  [+]     package        GNUPG
+  [!]     ensure-dir     ~/.gnupg/
+  [!]     config-lines   ~/.gnupg/gpg.conf
+  [!]     package        FIREWALLD
+  [!]     service        firewalld
+  [x]     package        vim-tiny
+  [-]     package        nano
+
+7 action(s): 1 to apply, 5 already present, 1 to remove, 1 disabled
+[+] apply  [!] already present  [x] remove  [-] disabled
+```
+
+| Glyph | Meaning |
+|-------|---------|
+| `[+]` | Will be installed / created / started |
+| `[!]` | Already in the desired state — skipped |
+| `[x]` | Will be removed (explicitly disabled + prune trait) |
+| `[-]` | Disabled but preserved (no prune trait — just skipped) |
+
+When you want to understand *why* each action exists, add `-v`:
+
+```
+$ linacs explain -v
+  #  STATUS  TYPE           TARGET                   PROVENANCE
+  -  ------  -------------  -----------------------  ---------------------------------
+  1  [+]     package        GNUPG                    SECURITY-GPG / GPG-HARDENED
+  2  [!]     ensure-dir     ~/.gnupg/                SECURITY-GPG / GPG-HARDENED
+  ...
+```
+
+Every action is tagged with its **feature** and **provider** — no mystery about where a package requirement came from. You see the full dependency chain from your home definition all the way down to what's about to change on disk.
+
 ---
 
 ## Where to go next

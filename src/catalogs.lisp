@@ -39,7 +39,8 @@ that extend an existing catalog (e.g. linacs-catalog-nix)."
   (let ((table (or (gethash catalog-name *catalogs*)
                     (setf (gethash catalog-name *catalogs*) (make-hash-table :test 'eq)))))
     (setf (gethash canonical-key table)
-          (append (gethash canonical-key table) distro-alist))))
+          (append (gethash canonical-key table) distro-alist))
+))
 
 (defun catalog-lookup (catalog-name canonical-key distro)
   "Resolve CANONICAL-KEY through CATALOG-NAME for DISTRO. If the keyword
