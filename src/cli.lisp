@@ -102,6 +102,31 @@ never notices this; a persistent one does."
 (defparameter *print-table-max-width* 60
   "Maximum column width for PRINT-TABLE; longer cells are truncated.")
 
+(defun strip-ansi (s)
+  "Remove ANSI escape sequences from S for display-width measurement."
+  (let ((result (make-array (length s) :element-type 'character :fill-pointer 0 :adjustable t)))
+    (with-input-from-string (in s)
+      (loop for c = (read-char in nil nil)
+            while c
+            do (if (char= c #\Escape)
+                   (loop for ec = (read-char in nil nil)
+                         while ec
+                         when (char= ec #\m) do (return))
+                   (vector-push-extend c result))))
+    result))
+
+(defun display-width (s)
+  "ANSI-stripped display width of string S."
+  (length (strip-ansi (or s ""))))
+
+(defun pad-to-width (s w)
+  "Pad S with trailing spaces so its display (ANSI-stripped) width reaches W."
+  (let* ((str (or s ""))
+         (extra (- w (display-width str))))
+    (if (plusp extra)
+        (concatenate 'string str (make-string extra :initial-element #\Space))
+        str)))
+
 (defun print-table (headers rows)
   "Print a simple aligned table (a list of HEADERS strings, then each row
 in ROWS as a list of strings, one per column) with a dashed rule under
@@ -117,11 +142,12 @@ report is consistent whether or not anything is registered."
            (truncated-headers (mapcar #'truncate-cell headers))
            (widths (loop for i below ncols
                          collect (reduce #'max
-                                         (cons (length (nth i truncated-headers))
-                                               (mapcar (lambda (r) (length (or (nth i r) ""))) truncated-rows))))))
+                                         (cons (display-width (nth i truncated-headers))
+                                               (mapcar (lambda (r) (display-width (nth i r))) truncated-rows))))))
       (flet ((row-string (cells)
                (format nil "  ~{~a~^  ~}"
-                       (loop for i below ncols collect (format nil "~va" (nth i widths) (or (nth i cells) ""))))))
+                       (loop for i below ncols
+                             collect (pad-to-width (or (nth i cells) "") (nth i widths))))))
         (format t "~a~%" (row-string truncated-headers))
         (format t "~a~%" (row-string (mapcar (lambda (w) (make-string w :initial-element #\-)) widths)))
         (dolist (r truncated-rows) (format t "~a~%" (row-string r)))))))
