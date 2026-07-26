@@ -1,267 +1,287 @@
-# LINACS - Declarative Linux Home Environment Definition Language
+# LINACS — Your Linux, the way you want it.
+## Declared in Lisp. Applied everywhere.
 
-If there only was a Linux like Emacs. Configured in Lisp. Now there is - Linacs.
+> *"If only there were a Linux like Emacs. Configured in Lisp."*
+> Now there is.
 
-## Overview
+---
 
-LINACS is a project that allows users to declaratively define their Linux home environment using a Lisp-like syntax. It handles package installation, file configuration, service management, and more through a standardized DSL.
+## What LINACS is for you
 
-## Key Features
+I am for the person who has three machines — a ThinkPad running Fedora, a tower on Arch, a Hetzner VPS on Debian — and is tired of keeping their dotfiles, packages, and services in sync across all three. You've tried shell scripts (they rot), Ansible (too heavy for one user), Nix (too much buy-in for a single-person setup), chezmoi (great for dotfiles, but doesn't install packages or enable services).
 
-- **Declarative Configuration**: Define your home environment with clear, readable Lisp code
-- **Distribution Agnostic**: Works across Fedora, Arch, Debian, Ubuntu, and other mutable distributions
-- **Idempotent Actions**: Every action is designed to be idempotent
-- **Auto-Discovery**: Automatically discovers features, providers, catalogs, and action types
-- **Fact-Based**: Automatically detects your system (OS, GPU, laptop/desktop, etc.)
-- **Extensible**: Easy to add new features, providers, action types, and `:via` handlers via plugins
+I am for the person who wants one file — one source of truth — that says: my editor is Emacs, my shell is Fish, my firewall is home-zone with SSH and mDNS, my GPG config is hardened, my Wayland variables are set, my SSH keys are provisioned, and I want to run me across every machine I own.
 
-## Quick Start
+Not a flake. Not a derivation. Not a module. Just Lisp.
 
-### Installation
+---
 
-```bash
-# Install dependencies
-sudo dnf install sbcl asdf-uiop  # Fedora
-# or
-sudo apt-get install sbcl libffi-dev  # Debian/Ubuntu
+## How you use me
 
-# Clone and install
-cd /path/to/linacs-project
-git clone <repository-url>
-cd linacs
-./build.sh
-```
-
-### Running LINACS
-
-```bash
-# Build and install (creates `linacs` executable)
-./build.sh
-
-# Create a home definition
-echo "(define-home my-home (use-feature :emacs))" > home.lisp
-
-# Apply configuration
-./linacs apply --root . -C /path/to/linacs-home
-```
-
-## Architecture
-
-### Core Components
-
-- **Features**: Abstract capabilities (e.g., `:development`, `:editor`)
-- **Providers**: Concrete implementations mapping features to actions
-- **Facts**: System information (OS, GPU, laptop/desktop, etc.)
-- **Actions**: Atomic operations (package install, file copy, service enable)
-- **Catalogs**: Distribution-specific package names
-- **Discovery**: Automatic plugin and file discovery
-
-### Home Definition
+You write **what**. I know **how**.
 
 ```lisp
-(define-home my-home
+(define-home my-machine
+  (use-feature :editor :via :emacs)
+  (use-feature :security)
+  (file "~/.gitconfig" :from "gitconfig.tmpl" :template t))
+```
+
+Package names, config paths, init systems, distro quirks — encoded in catalogs and providers, not in your home definition. You stay distro-agnostic without writing a single `if` for package managers.
+
+```bash
+linacs plan         # What will I do?
+linacs diff         # What would change?
+linacs apply        # Make it so
+```
+
+---
+
+## A comparison, so you know where I fit
+
+### Nix / Guix
+
+Nix and Guix are **operating-system-scale** tools. They replace your package manager, your init system, your filesystem layout. The power is immense — purely functional, reproducible, rollbackable. The cost is also immense: a new language, their package set, often adopting the whole OS or nothing.
+
+**I am not Nix.** I do not replace your package manager — I call it. I do not lock your filesystem into immutability — I converge toward a target state, idempotently. I do not require you to rebuild the world when you want to add a package.
+
+**Where Nix and I agree:** declarative intent. You say *what*, not *how*.
+
+**Where I differ:** I sit on top of your existing distribution. You keep `dnf`, `apt`, `pacman`. You keep `systemd`. You keep your distro's defaults. For immutable distros like Fedora Silverblue, I layer packages into a toolbox container instead of the host — I don't pretend your OS is something it's not.
+
+**Where Nix wins:** hermetic reproducibility. My action executors are idempotent, but I don't have a purely functional store. If you need bit-for-bit identical environments and don't want the host OS to matter, Nix is the answer.
+
+**Where I win:** incremental adoption. You don't adopt me overnight. Start with two features — `:editor`, `:git` — keep your shell scripts for the rest. Move more into your home definition over time. Point me at your existing dotfiles directory; I stow them as-is.
+
+### chezmoi
+
+[chezmoi](https://chezmoi.io) is the best dotfile manager in class. It handles one thing well: managing `~/.config`, `~/.bashrc`, `~/.gitconfig` across machines with templates and secrets.
+
+**What I share with chezmoi:** you version-control your config, secrets come from external sources, files are applied to your home directory.
+
+**Where chezmoi wins:** maturity, community, documentation. Its `diff`/`apply` workflow is battle-tested.
+
+**Where I differ:** chezmoi stops at your home directory. I also install packages, enable services, configure firewalld zones, manage groups, set kernel parameters, write cron jobs — the things that live outside `~` but are still part of your machine's setup. When your editor feature needs to install `emacs` and enable `emacs.service`, I handle it in the same declaration.
+
+**Where we overlap:** both apply dotfiles. If chezmoi works for you and you don't need the rest, use it. It's excellent at what it does.
+
+### Shell scripts / Ansible / ...
+
+Shell scripts work until they don't. Each new machine means another `if` branch. Ansible is for fleets of servers, not one user's workstation. Puppet, Salt — they assume an organization.
+
+I am for one user with a handful of machines. You run me from your laptop, and I configure your laptop. No control plane. No agent. No YAML.
+
+---
+
+## How I work
+
+I am a pipeline. Five steps, no magic:
+
+```
+┌─ Discovery ────  Auto-load plugins, your files, your home.lisp
+├─ Facts ────────  Probe OS, GPU, display, laptop, YubiKey, ...
+├─ Resolution ───  Walk feature graph, call providers, collect actions
+├─ Dedup+Order ──  Resolve conflicts, topological sort
+└─ Execution ────  Apply or check, one action at a time, idempotently
+```
+
+Every action is idempotent by construction. The package executor checks before it installs. The config-lines executor diffs before it writes. The service executor queries `systemctl is-active` before it starts. I don't need a state file — the system *is* the state.
+
+---
+
+## Stow is my backbone
+
+You will add new applications to your home faster than I can ship providers for them. That is fine. I am built for this.
+
+Drop any directory under `files/` in your home project, and I stow it onto your home directory with symlinks:
+
+```
+my-home/
+├── home.lisp
+└── files/
+    ├── .config/          # Stows to ~/.config/
+    │   ├── fish/
+    │   └── sway/
+    ├── .gitconfig.tmpl   # Stows to ~/.gitconfig
+    └── scripts/           # Stows to ~/scripts/
+        └── my-thing.sh
+```
+
+`files/` mirrors your home directory. Every file or directory in `files/` is symlinked into place by me. You version-control the whole thing. You edit in place — it's already symlinked back to your repo.
+
+This is not an afterthought. Stow is a first-class action type (`:stow`) with its own executor — it handles folding, unfolding, and conflict resolution the same way GNU Stow does, natively in Lisp, no external binary required. Plugins use it too: the security plugin stows `files/gpg/` onto `~/.gnupg/` and `files/firewalld/` onto `/etc/firewalld/`.
+
+**Most of your dotfile management will be stow.** Features and providers are for the things that need logic (package installation, service enablement, config generation). Everything else is a file in `files/`.
+
+---
+
+## A real example
+
+Here is what a complete home definition looks like — not a toy, but something you'd actually write:
+
+```lisp
+(define-home jans-machine
   :traits (:prune-explicitly-disabled)
 
-  ;; Capabilities
-  (use-feature :development)
-  (use-feature :browser)
+  ;; ─── Core ──────────────────────────────────────────────
+  (use-feature :editor
+    :via (if (fact :laptop-p) :emacs :vim))
+  (use-feature :terminal
+    :via (if (eq (fact :display-server) :wayland) :alacritty :rxvt))
+  (use-feature :browser :via :firefox)
+  (use-feature :security)           ;; umbrella: GPG + firewall
 
-  ;; Standard CL conditional over a Fact
+  ;; ─── Conditional on facts ─────────────────────────────
   (when (fact :laptop-p)
-    (use-feature :battery-management))
+    (use-feature :power-management))
 
-  ;; Simple file drops for dotfiles
-  (file "~/.gitconfig" :from "gitconfig")
+  (when (eq (fact :display-server) :wayland)
+    (env-var "MOZ_ENABLE_WAYLAND" :value "1" :file "~/.profile")
+    (env-var "QT_QPA_PLATFORM" :value "wayland" :file "~/.profile"))
 
-  ;; Secrets
-  (secret "~/.ssh/id_ed25519" :from :pass :path "ssh/id_ed25519")
+  ;; ─── Dotfiles (stow-managed) ─────────────────────────
+  (file "~/.gitconfig" :from "gitconfig.tmpl" :template t
+    :secrets ((:signing-key :from :pass :path "git/signing-key")))
+  (file "~/.config/starship.toml" :from "starship.toml")
 
-  ;; Explicit removal
-  (package "vim" :disabled t))
+  ;; ─── Secrets ─────────────────────────────────────────
+  (directory "~/.ssh" :mode #o700)
+  (secret "~/.ssh/id_ed25519" :from :pass :path "ssh/id_ed25519" :mode #o600)
+  (file "~/.ssh/config" :from "ssh/config" :mode #o600)
+
+  ;; ─── Removal ─────────────────────────────────────────
+  (package "vim-tiny" :disabled t)
+  (package "nano" :disabled t))
 ```
 
-## Testing
+You check this into Git. Clone it on your new machine. Run `linacs apply`. Done.
 
-LINACS includes a comprehensive test suite using the FiveAM testing framework.
+---
 
-### Running Tests
+## The stack
+
+```
+You                    ─  Home definition (Lisp DSL)
+│
+Features + Providers   ─  Community knowledge, your overrides
+│
+LINACS core            ─  Fact probing, resolution, ordering, execution
+│
+Action executors       ─  package, stow, copy-file, service, firewall-zone, ...
+│
+Your system            ─  Fedora, Arch, Debian, Ubuntu, Silverblue, ...
+```
+
+---
+
+## Plugin ecosystem
+
+I ship with a growing set of plugins, each in its own ASDF system, auto-discovered by name:
+
+| Plugin | What it manages |
+|--------|----------------|
+| [linacs-fedora](../linacs-plugins/distributions/linacs-fedora/README.md) | Facts: rpm-ostree, toolbox, flatpak |
+| [linacs-kde-plasma](../linacs-plugins/desktops/linacs-kde-plasma/README.md) | KDE Plasma configuration via `kwriteconfig5` |
+| [linacs-security](../linacs-plugins/tools/linacs-security/README.md) | GPG (default/hardened/YubiKey), firewalld (home/public/server) |
+
+You write your own the same way. Drop a `linacs-*` ASDF system in your Quicklisp local-projects, or put a `.lisp` file in your home project's `providers/` directory. I discover it on next run.
+
+---
+
+## Philosophy, in a few lines
+
+- **You declare intent; I encode knowledge.** You say `(use-feature :editor)`. I know that means a package, maybe a config directory, an environment variable.
+- **Extend without forking.** New features, providers, catalogs, action types — all registered at load time. The core is deliberately small.
+- **No DSL variables.** Facts replace them. Profiles override facts per machine. You never bind a variable in your home definition.
+- **Mutable by default, immutable when needed.** `:via :toolbox` handles rpm-ostree. More backends can be added.
+- **Idempotency lives in the executor, not in a lockfile.** Run me twice, get the same result. No diff against yesterday's snapshot.
+- **No rollback.** Run me again. I converge. If an action fails, I tell you — I don't revert the ones that succeeded.
+
+---
+
+## Project layout
+
+```
+├── linacs/                     I am here — the core engine
+│   ├── src/                    Resolution, execution, CLI
+│   │   ├── action-types/       22 built-in executors
+│   │   ├── pipeline.lisp       5-step pipeline
+│   │   ├── cli.lisp            12 CLI commands
+│   │   └── ...
+│   └── docs/
+│       ├── user-manual.md      Full user manual (I/you voice)
+│       └── diagnostics-design.md
+│
+├── linacs-home/                Your home definition
+│   ├── home.lisp               Your declaration
+│   ├── files/                  Stow-managed dotfiles
+│   ├── features/               Your feature overrides
+│   ├── providers/              Your provider overrides
+│   ├── catalogs/               Your package translations
+│   └── plugins/                Symlinks to plugins
+│
+├── linacs-plugins/             Community plugins
+│   ├── tools/linacs-security/  GPG + firewall
+│   ├── distributions/          Fedora, Arch detection
+│   └── desktops/               KDE Plasma, Sway, ...
+│
+└── AGENTS.md                   Complete specification (v1.0)
+```
+
+---
+
+## Where to go next
+
+| What | Where |
+|------|-------|
+| **User manual** | [docs/user-manual.md](docs/user-manual.md) — getting started, mental model, references (1900+ words, I/you voice) |
+| **Plugins overview** | [linacs-plugins/README.md](../linacs-plugins/README.md) |
+| **Security plugin (GPG + firewall)** | [linacs-security/README.md](../linacs-plugins/tools/linacs-security/README.md) |
+
+---
+
+## Quick start
 
 ```bash
-cd /path/to/linacs
-sbcl --load run-all-tests.lisp
-```
-
-### Test Structure
-
-The test suite covers:
-- **DSL Tests**: File, directory, symlink, package definitions (6 tests)
-- **Feature Tests**: Dependency graph resolution (1 test)
-- **Pipeline Tests**: Execution flow (1 test)
-- **Executor Tests**: Copy-file, ensure-dir, symlink, service, package-action, config-lines (13 tests)
-- **Action Tests**: Identity computation, deduplication, ordering (10 tests)
-
-**Total: 23 tests** - All passing
-
-See [linacs-tests/README.md](../linacs-tests/README.md) for detailed testing documentation.
-
-### Quick Test
-
-```bash
-# Run simple test suite
-sbcl --load run-simple-tests.lisp
-```
-
-### Adding Tests
-
-```lisp
-(in-package #:linacs-tests)
-
-(def-suite your-suite
-  :description "Suite description here")
-
-(def-test your-test-name ()
-  "Test description here"
-  (it.bese.fiveam:is (condition-equals expected-value))
-  (linacs.core:reset-project-registries))  ; Reset for isolation
-```
-
-## CLI Commands
-
-```
-linacs <command> [options]
-
-Commands:
-  plan        Show the resolved, ordered action list
-  apply       Execute the ordered action list
-  diff        Show which actions would change something
-  validate    Check configuration syntax only
-  check       Fully resolve configuration without executing
-  explain     Print the resolved feature graph and action order
-  graph       Print the abstract feature dependency graph
-  export      Write the action list as a data s-expression
-  list        List registered features, providers, catalogs, action types
-  doctor      Diagnose the environment and provider coverage
-  init        Scaffold a new project
-  version     Print the LINACS version
-
-Options:
-  -C, --root DIR        Project root (default .)
-  -p, --platform NAME   Target platform (default: auto-detect)
-      --profile NAME    Select a defined profile (fact overrides)
-      --provider T=P    Prefer provider P for feature T
-  -n, --dry-run         Show changes without executing them
-  -v, --verbose         Increase verbosity (can be repeated)
-      --quiet           Only show errors
-```
-
-## Development
-
-### Project Structure
-
-```
-linacs/
-├── src/                  # LINACS core implementation
-│   ├── package.lisp
-│   ├── conditions.lisp
-│   ├── log.lisp
-│   ├── discovery.lisp
-│   ├── facts.lisp
-│   ├── profiles.lisp
-│   ├── catalogs.lisp
-│   ├── features.lisp
-│   ├── providers.lisp
-│   ├── actions.lisp
-│   ├── secrets.lisp
-│   ├── templates.lisp
-│   ├── action-types/
-│   │   ├── package.lisp
-│   │   ├── helpers.lisp
-│   │   ├── copy-file.lisp
-│   │   ├── ensure-dir.lisp
-│   │   ├── symlink.lisp
-│   │   ├── service.lisp
-│   │   ├── timer.lisp
-│   │   ├── env-var.lisp
-│   │   ├── config-lines.lisp
-│   │   ├── config-ini.lisp
-│   │   ├── config-env.lisp
-│   │   ├── package-action.lisp
-│   │   ├── secret.lisp
-│   │   ├── user.lisp
-│   │   ├── group.lisp
-│   │   ├── authorized-key.lisp
-│   │   ├── permissions.lisp
-│   │   ├── mount.lisp
-│   │   ├── sysctl.lisp
-│   │   ├── kernel-module.lisp
-│   │   ├── hostname.lisp
-│   │   ├── locale.lisp
-│   │   ├── firewall.lisp
-│   │   ├── cron.lisp
-│   │   ├── command.lisp
-│   │   ├── clone.lisp
-│   │   └── stow.lisp
-│   ├── pipeline.lisp
-│   ├── privilege.lisp
-│   ├── dsl.lisp
-│   └── cli.lisp
-├── tests/               # Test suite
-│   ├── package.lisp
-│   ├── helpers.lisp
-│   ├── dsl/
-│   ├── features/
-│   ├── pipeline/
-│   ├── executors/
-│   └── actions/
-├── build.sh
-├── linacs.asd
-└── README.md
-```
-
-### Building
-
-```bash
-# Build the executable
+# Build me once
+cd linacs
 ./build.sh
 
-# Run in development mode
-sbcl --eval '(asdf:load-system :linacs)'
+# Scaffold your home
+mkdir my-home && cd my-home
+linacs init
+
+# Edit home.lisp, then:
+linacs plan         # What will I do?
+linacs diff         # What would change?
+linacs apply        # Make it so
+
+# On your next machine:
+git clone git@github.com:you/my-home.git
+linacs apply         # Same home, new machine
 ```
 
-### Portability
+---
 
-LINACS targets SBCL. The build script (`build.sh`) uses `sb-ext:save-lisp-and-die`
-to produce a standalone executable, and the terminal-handling code in
-`read-sudo-password` (src/action-types/helpers.lisp) uses `sb-unix` and
-`sb-posix` for echo-disabled password prompts. A pure-ANSI fallback exists
-and is reached automatically on non-SBCL implementations or when the
-sb-posix contrib is not loaded, but full portability to another Common Lisp
-implementation (CCL, ABCL, ECL) is not currently a goal of the core project.
+## For contributors
 
-### Running Tests
+I am an open specification with an open implementation. The fastest way to extend me is to write a provider:
 
 ```bash
-# Run all tests
-sbcl --load run-all-tests.lisp
-
-# Run simple tests
-sbcl --load run-simple-tests.lisp
-
-# Run specific test module
-sbcl --eval '(load "tests/package.lisp")' \
-     --eval '(load "tests/actions/identity.lisp")' \
-     --eval '(fiveam:run-all-tests :summary nil)' \
-     --eval '(quit)'
+touch my-home/providers/my-cool-thing.lisp
 ```
 
-## Contributing
+```lisp
+(in-package :linacs.core)
+(define-provider :my-cool-thing :for :editor
+  (lambda (facts)
+    (list (list :action :package :target :my-cool-thing :via :system))))
+```
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `sbcl --load run-all-tests.lisp`
-5. Submit a pull request
+I discover it automatically on next run. No Makefile edit. No registration step.
+
+---
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT — LINACS Project
