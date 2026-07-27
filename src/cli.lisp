@@ -181,6 +181,15 @@ PRUNE-P trait: [x] disabled+prune, [-] disabled only, [+] would-change,
               ""))
         "")))
 
+(defun package-via-label (action)
+  "Return a short display string for the :via method of a :package action.
+For non-package actions, return an empty string."
+  (if (eq (action-type action) :package)
+      (let ((via (or (getf action :via)
+                     (resolve-package-via action))))
+        (format nil ":~(~a~)" via))
+      ""))
+
 (defun plan-summary-legend ()
   "Return a single-line legend string for the status glyphs."
   "[+] apply  [!] already present  [x] remove  [-] disabled")
@@ -226,23 +235,24 @@ Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
                                                     :execute-mode :plan-only)
     (when ordered (preflight-notice ordered))
     (let* ((prune-p (member :prune-explicitly-disabled (getf home :traits)))
-           (verbose (>= (cli-opts-verbosity opts) 2))
-           (annotated
-            (loop for a in ordered
-                  for id = (action-identity a)
-                  for glyph = (action-status-glyph a prune-p)
-                  collect (list glyph
-                                (string-downcase (string (action-type a)))
-                                (princ-to-string (action-target a))
-                                (if verbose (provenance-string id) "")))))
+            (verbose (>= (cli-opts-verbosity opts) 2))
+            (annotated
+             (loop for a in ordered
+                   for id = (action-identity a)
+                   for glyph = (action-status-glyph a prune-p)
+                   collect (list glyph
+                                 (string-downcase (string (action-type a)))
+                                 (princ-to-string (action-target a))
+                                 (package-via-label a)
+                                 (if verbose (provenance-string id) "")))))
       (format t "Resolved plan for ~a (traits: ~a):~%~%" (getf home :name) (or (getf home :traits) "none"))
       (let ((display (mapcar (lambda (row)
                                (cons (colorize-glyph (first row)) (rest row)))
                              annotated)))
         (if verbose
-            (print-table '("STATUS" "TYPE" "TARGET" "PROVENANCE") display)
-            (print-table '("STATUS" "TYPE" "TARGET")
-                         (mapcar (lambda (r) (subseq r 0 3)) display))))
+            (print-table '("STATUS" "TYPE" "TARGET" "VIA" "PROVENANCE") display)
+            (print-table '("STATUS" "TYPE" "TARGET" "VIA")
+                         (mapcar (lambda (r) (subseq r 0 4)) display))))
       (let* ((to-apply (count "[+]" annotated :key #'first :test #'string=))
              (present (count "[!]" annotated :key #'first :test #'string=))
              (remove (count "[x]" annotated :key #'first :test #'string=))
@@ -339,7 +349,8 @@ Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
                                    (t "[-]"))
                      collect (list glyph
                                    (string-downcase (string (action-type a)))
-                                   (princ-to-string (action-target a)))))
+                                   (princ-to-string (action-target a))
+                                   (package-via-label a))))
          (counts (loop for v being the hash-value of results
                        for status = (getf v :status)
                        count status into total
@@ -349,7 +360,7 @@ Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
                        count (eq status :skipped) into skipped
                        finally (return (list total applied unchanged failed skipped)))))
     (format t "~%")
-    (print-table '("STATUS" "TYPE" "TARGET") rows)
+    (print-table '("STATUS" "TYPE" "TARGET" "VIA") rows)
     (destructuring-bind (total applied unchanged failed skipped) counts
       (format t "~%~d action(s): ~d applied, ~d unchanged~@[, ~d failed~]~@[, ~d skipped~]~%"
               total applied unchanged
@@ -445,24 +456,26 @@ we call execute-action separately to collect :would-change statuses."
                              collect (list (princ-to-string i) glyph
                                            (string-downcase (string (action-type a)))
                                            (princ-to-string (action-target a))
+                                           (package-via-label a)
                                            (provenance-string id)
                                            (or facts-str ""))))
                  (display (mapcar (lambda (row)
                                     (destructuring-bind (num glyph &rest rest) row
                                       (list* num (colorize-glyph glyph) rest)))
                                   rows)))
-            (print-table '("#" "STATUS" "TYPE" "TARGET" "PROVENANCE" "FACTS INVOLVED")
+            (print-table '("#" "STATUS" "TYPE" "TARGET" "VIA" "PROVENANCE" "FACTS INVOLVED")
                          display))
           (let* ((rows (loop for a in ordered for i from 1
                              for glyph = (action-status-glyph a prune-p)
                              collect (list (princ-to-string i) glyph
                                            (string-downcase (string (action-type a)))
-                                           (princ-to-string (action-target a)))))
+                                           (princ-to-string (action-target a))
+                                           (package-via-label a))))
                  (display (mapcar (lambda (row)
                                     (destructuring-bind (num glyph &rest rest) row
                                       (list* num (colorize-glyph glyph) rest)))
                                   rows)))
-            (print-table '("#" "STATUS" "TYPE" "TARGET")
+            (print-table '("#" "STATUS" "TYPE" "TARGET" "VIA")
                          display))))
     (format t "~%~d action(s).~%~a~%" (length ordered) (plan-summary-legend))))
 
