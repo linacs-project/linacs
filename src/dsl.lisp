@@ -47,6 +47,15 @@
                   (ignore-errors (namestring *compile-file-pathname*))
                   "<unknown>")))
 
+(defmacro define-action-macro (name action-type source &key extra-plist)
+  `(defmacro ,name (target &rest opts)
+     (let* ((loc (location-from-load-pathname))
+            (action (list* :action ,action-type :target target
+                           ,@extra-plist
+                           (append opts
+                                   (list :priority :user :source ,source :location loc)))))
+       `(progn (push ',action *current-home-actions*) ',action))))
+
 (defmacro package-preference (&rest chain)
   "Declare the ordered list of :via methods to try for (package ...) forms
 that don't specify :via explicitly.  E.g. (package-preference :flatpak :system).
@@ -106,26 +115,8 @@ are known); :custom and all other options are taken as literal data."
                   ',rest-opts)
            *current-home-use-features*)))
 
-(defmacro file (target &rest opts)
-  "(file \"~/.gitconfig\" :from \"gitconfig\" ...) -> :copy-file action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :copy-file :target target :to target
-                        (append opts (list :priority :user :source "user:file" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro directory (target &rest opts)
-  "(directory \"~/.ssh\" :mode #o700) -> :ensure-dir action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :ensure-dir :target target
-                        (append opts (list :priority :user :source "user:directory" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro symlink (target &rest opts)
-  "(symlink \"~/.emacs.d\" :to \"~/.config/emacs\") -> :symlink action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :symlink :target target
-                        (append opts (list :priority :user :source "user:symlink" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
+(define-action-macro file :copy-file "user:file"
+  :extra-plist (:to target))
 
 (defmacro package (target &rest opts)
   "(package \"vim\" :disabled t) -> :package action, defaulting :via :system."
@@ -135,38 +126,6 @@ are known); :custom and all other options are taken as literal data."
     (let ((action (list* :action :package :target target
                           (append opts (list :priority :user :source "user:package" :location loc)))))
       `(progn (push ',action *current-home-actions*) ',action))))
-
-(defmacro secret (target &rest opts)
-  "(secret \"~/.ssh/id_ed25519\" :from :pass :path \"ssh/id_ed25519\") -> :secret action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :secret :target target
-                        (append opts (list :priority :user :source "user:secret" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro env-var (target &rest opts)
-  "(env-var \"EDITOR\" :value \"emacs\" :file \"~/.profile\") -> :env-var action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :env-var :target target
-                        (append opts (list :priority :user :source "user:env-var" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro config-lines (target &rest opts)
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :config-lines :target target
-                        (append opts (list :priority :user :source "user:config-lines" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro config-ini (target &rest opts)
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :config-ini :target target
-                        (append opts (list :priority :user :source "user:config-ini" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro config-env (target &rest opts)
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :config-env :target target
-                        (append opts (list :priority :user :source "user:config-env" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
 
 (defmacro direct-action (&rest args)
   "(direct-action :reason \"...\" (:action :package :target \"x\" ...) ...)
@@ -183,109 +142,25 @@ since a user reached for the escape hatch deliberately."
                            :location ',loc))
              *current-home-actions*))))
 
-;;; --- System administration convenience forms --------------------------
-;;; Same literal-data convention as the forms above: arguments are taken
-;;; as macro-time data, never evaluated as code.
+(define-action-macro directory      :ensure-dir    "user:directory")
+(define-action-macro symlink        :symlink       "user:symlink")
+(define-action-macro secret         :secret        "user:secret")
+(define-action-macro env-var        :env-var       "user:env-var")
+(define-action-macro config-lines   :config-lines  "user:config-lines")
+(define-action-macro config-ini     :config-ini    "user:config-ini")
+(define-action-macro config-env     :config-env    "user:config-env")
 
-(defmacro user (target &rest opts)
-  "(user \"deploy\" :shell \"/bin/bash\" :create-home t) -> :user action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :user :target target
-                        (append opts (list :priority :user :source "user:user" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro group (target &rest opts)
-  "(group \"docker\" :gid 999) -> :group action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :group :target target
-                        (append opts (list :priority :user :source "user:group" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro authorized-key (target &rest opts)
-  "(authorized-key \"deploy\" :key \"ssh-ed25519 AAAA...\") -> :authorized-key action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :authorized-key :target target
-                        (append opts (list :priority :user :source "user:authorized-key" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro permissions (target &rest opts)
-  "(permissions \"/var/lib/mysql\" :owner \"mysql\" :group \"mysql\" :mode #o750) -> :permissions action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :permissions :target target
-                        (append opts (list :priority :user :source "user:permissions" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro mount (target &rest opts)
-  "(mount \"/mnt/data\" :device \"/dev/sdb1\" :fstype \"ext4\") -> :mount action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :mount :target target
-                        (append opts (list :priority :user :source "user:mount" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro sysctl (target &rest opts)
-  "(sysctl \"net.ipv4.ip_forward\" :value 1) -> :sysctl action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :sysctl :target target
-                        (append opts (list :priority :user :source "user:sysctl" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro kernel-module (target &rest opts)
-  "(kernel-module \"nfs\" :state :loaded) / (kernel-module \"usb-storage\" :state :blacklisted)."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :kernel-module :target target
-                        (append opts (list :priority :user :source "user:kernel-module" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro hostname (target &rest opts)
-  "(hostname \"myhost.example.com\") -> :hostname action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :hostname :target target
-                        (append opts (list :priority :user :source "user:hostname" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro locale (target &rest opts)
-  "(locale \"en_US.UTF-8\" :timezone \"America/New_York\") -> :locale action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :locale :target target
-                        (append opts (list :priority :user :source "user:locale" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro firewall (target &rest opts)
-  "(firewall 22 :protocol \"tcp\" :allow t) -> :firewall action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :firewall :target target
-                        (append opts (list :priority :user :source "user:firewall" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro cron (target &rest opts)
-  "(cron \"nightly-backup\" :schedule \"0 2 * * *\" :command \"/usr/local/bin/backup.sh\") -> :cron action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :cron :target target
-                        (append opts (list :priority :user :source "user:cron" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro command (target &rest opts)
-  "(command \"clone dotfiles repo\" :run \"git clone ...\" :creates \"~/.dotfiles\") -> :command action."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :command :target target
-                        (append opts (list :priority :user :source "user:command" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro clone (target &rest opts)
-  "(clone \"~/.dotfiles\" :url \"https://example.com/dotfiles.git\" :branch \"main\" :depth 1)
--> :clone action. Ensures a git repo is checked out at TARGET; a repeat
-run checks the actual origin remote, not just whether TARGET exists."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :clone :target target
-                        (append opts (list :priority :user :source "user:clone" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
-
-(defmacro stow (target &rest opts)
-  "(stow \"fish\") -> :stow action. Mirrors files/fish/** onto :to (default
-~), folding whole directories when nothing exists yet and merging
-file-by-file when the target already exists -- GNU-Stow style, with no
-dependency on the stow binary."
-  (let* ((loc (location-from-load-pathname))
-         (action (list* :action :stow :target target
-                        (append opts (list :priority :user :source "user:stow" :location loc)))))
-    `(progn (push ',action *current-home-actions*) ',action)))
+(define-action-macro user           :user          "user:user")
+(define-action-macro group          :group         "user:group")
+(define-action-macro authorized-key :authorized-key "user:authorized-key")
+(define-action-macro permissions    :permissions   "user:permissions")
+(define-action-macro mount          :mount         "user:mount")
+(define-action-macro sysctl         :sysctl        "user:sysctl")
+(define-action-macro kernel-module  :kernel-module "user:kernel-module")
+(define-action-macro hostname       :hostname      "user:hostname")
+(define-action-macro locale         :locale        "user:locale")
+(define-action-macro firewall       :firewall      "user:firewall")
+(define-action-macro cron           :cron          "user:cron")
+(define-action-macro command        :command       "user:command")
+(define-action-macro clone          :clone         "user:clone")
+(define-action-macro stow           :stow          "user:stow")
