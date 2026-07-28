@@ -107,6 +107,15 @@ built, or running in a CI environment)."
 of interactive password prompting, delegating to the askpass program
 specified by the environment variable.")
 
+(defvar *sudo-password* nil
+  "In-memory cache of the sudo password, set once by PREFLIGHT-SUDO-PROMPT
+(before any action executes) or by APPLY-SUDO-PASSWORD-STDIN.
+RUN-PRIVILEGED consults this via `sudo -S` when sudo's own credential
+cache (`sudo -n`) is empty or expired, so the spinner never gets
+interrupted by an interactive password prompt mid-execution.
+
+Set to NIL to force a fresh prompt on the next privilege call.")
+
 (defvar *capture-subprocess-output* nil
   "When non-nil, RUN-PRIVILEGED captures subprocess stdout/stderr into
 *CAPTURED-SUBPROCESS-LINES* instead of passing it through to the terminal.
@@ -141,9 +150,10 @@ Signals EXECUTION-FAILURE if the command exits non-zero."
       (unless (zerop (nth-value 2
                       (uiop:run-program (append (sudo-n-or-a-prefix) (list "true"))
                                         :ignore-error-status t)))
-        ;; Prompt interactively only when no askpass is configured.
+        ;; sudo -n / sudo -A failed.  Try the in-memory cache first via
+        ;; sudo -S, then prompt interactively only as a last resort.
         (unless *sudo-askpass*
-          (let ((password (read-sudo-password)))
+          (let ((password (or *sudo-password* (read-sudo-password))))
             (unless (zerop (nth-value 2
                             (uiop:run-program (list "sudo" "-S" "true")
                                               :input (make-string-input-stream
@@ -151,7 +161,8 @@ Signals EXECUTION-FAILURE if the command exits non-zero."
                                               :ignore-error-status t)))
               (error 'execution-failure :action-type :privileged-command
                      :target "credential validation"
-                     :underlying (format nil "sudo -S true failed -- wrong password?")))))))
+                     :underlying (format nil "sudo -S true failed -- wrong password?")))
+            (setf *sudo-password* password)))))
     (let* ((prefix (if needs-sudo-p (sudo-n-or-a-prefix) '()))
            (cmd (append prefix args)))
       (when needs-sudo-p
@@ -258,6 +269,58 @@ backend-detection probes."
 (defun which (program)
   "T if PROGRAM is found on PATH."
   (shell-ok-p (format nil "command -v ~a >/dev/null 2>&1" program)))
+
+(defparameter *sudo-requiring-action-types*
+  '(:package :service :timer :user :group :mount :sysctl :kernel-module
+    :hostname :firewall :locale :cron)
+  "Action types whose executors unconditionally call RUN-PRIVILEGED.
+Used by ACTION-NEEDS-PRIVILEGE-P to estimate how many actions in a plan
+will need a sudo password.")
+
+(defvar *non-privileged-package-vias*
+  '((:via :flatpak :scope :user))
+  "List of plist partial-match patterns that identify :package actions
+which do NOT need privilege escalation. Each entry is a plist of
+property-value pairs. An action is considered non-privileged if every
+property in any one entry matches the action's corresponding property.
+
+Built-in entries:
+  (:via :flatpak :scope :user)   — Flatpak user-scope installs never escalate.
+
+Plugins may push additional entries to declare their own non-privileged
+vias (e.g. (:via :pip), (:via :npm)).")
+
+(defun action-needs-privilege-p (action)
+  "T if ACTION is expected to need privilege escalation (sudo).
+Covers :package actions (minus non-privileged vias like :flatpak :user)
+and any action type whose executor unconditionally calls RUN-PRIVILEGED."
+  (flet ((matches-non-privileged-p (pattern)
+           (loop for (prop val) on pattern by #'cddr
+                 always (equal (getf action prop) val))))
+    (or (and (eq (action-type action) :package)
+             (not (some #'matches-non-privileged-p *non-privileged-package-vias*)))
+        (member (action-type action) *sudo-requiring-action-types*))))
+
+(defun preflight-sudo-prompt (ordered-actions)
+  "If the plan contains actions that will need sudo, prompt for the
+password once, before any execute.  Stores the password in
+*SUDO-PASSWORD* so RUN-PRIVILEGED never needs to prompt mid-execution
+(and also caches in sudo's own credential cache via sudo -S so
+sudo -n works for the first call).
+
+Does nothing if already privileged, if *SUDO-ASKPASS* is set, or if
+no sudo-needing actions are in the plan."
+  (let ((count (count-if #'action-needs-privilege-p ordered-actions)))
+    (when (and (> count 0) (not (privileged-p)) (null *sudo-askpass*))
+      (let ((password (read-sudo-password)))
+        (setf *sudo-password* password)
+        (unless (zerop (nth-value 2
+                        (uiop:run-program (list "sudo" "-S" "true")
+                                          :input (make-string-input-stream
+                                                  (format nil "~a~%" password))
+                                          :ignore-error-status t)))
+          (linacs.log:warn* "preflight sudo -S true failed; will use cached password per-action."))
+        (linacs.log:info "Cached sudo password for ~d privileged action(s)." count)))))
 
 (defmacro report (status &rest kvs)
   "Build a uniform executor return value: a plist with :status plus extras."

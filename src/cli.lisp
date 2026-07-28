@@ -212,8 +212,10 @@ Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
       glyph))
 
 (defun apply-sudo-password-stdin ()
-  "Read a sudo password from *standard-input* and cache it via sudo -S."
+  "Read a sudo password from *standard-input*, cache it in *SUDO-PASSWORD*
+and in sudo's own credential cache via sudo -S."
   (let ((password (read-line *standard-input* nil "")))
+    (setf *sudo-password* password)
     (unless (zerop (nth-value 2
                     (uiop:run-program (list "sudo" "-S" "true")
                                       :input (make-string-input-stream
@@ -291,6 +293,46 @@ Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
           (error (e) (setf ok nil) (linacs.log:error* "Syntax error in home.lisp: ~a" e)))))
     (if ok (format t "Syntax OK.~%") (uiop:quit 1))))
 
+;;; --- Spinner for long-running actions -----------------------------------
+
+(defvar *spinner-chars* "|/-\\"
+  "Characters to cycle through for the rotating spinner.")
+
+(defvar *spinner-active* nil
+  "When true, the spinner thread keeps rotating. Set to nil to stop it.")
+
+(defvar *spinner-thread* nil
+  "The background thread running the spinner animation, or nil.")
+
+(defun start-spinner (base-line)
+  "Start a background thread that displays a rotating spinner on the same
+terminal line as BASE-LINE, updating every 150ms.  Does nothing on
+non-interactive terminals or if thread creation fails."
+  (setf *spinner-active* t)
+  (setf *spinner-thread*
+        (ignore-errors
+          (sb-thread:make-thread
+           (lambda ()
+             (loop for i from 0
+                   while *spinner-active*
+                   do (format t "~C~a~a" #\Return base-line
+                              (aref *spinner-chars* (mod i 4)))
+                      (finish-output)
+                      (sleep 0.15))
+             ;; Clear the final spinner char with a space
+             (format t "~C~a " #\Return base-line))
+           :name "linacs-spinner"))))
+
+(defun stop-spinner ()
+  "Stop the spinner thread and wait for it to finish.  Safe to call when
+no spinner is running — returns immediately."
+  (when *spinner-thread*
+    (setf *spinner-active* nil)
+    (sb-thread:join-thread *spinner-thread* :default nil)
+    (setf *spinner-thread* nil)))
+
+;;; --- Progress reporting ---------------------------------------------------
+
 (defun apply-progress-glyph (phase &optional result-plist)
   "Return the status glyph for a given apply-progress phase."
   (case phase
@@ -304,7 +346,9 @@ Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
     (:skipped "[~]")))
 
 (defun apply-progress-reporter (action phase &optional data)
-  "Progress reporter bound to *PROGRESS-REPORTER* during CMD-APPLY."
+  "Progress reporter bound to *PROGRESS-REPORTER* during CMD-APPLY.
+On interactive terminals, shows a rotating spinner during action execution.
+On non-interactive terminals (piped output, CI), shows static line labels."
   (let* ((tty-p (interactive-stream-p *query-io*))
          (target (princ-to-string (action-target action)))
          (type-name (string-downcase (string (action-type action))))
@@ -314,15 +358,18 @@ Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
          (glyph (colorize-glyph raw-glyph)))
     (case phase
       (:before
-       (when tty-p
-         (format t "~C  ~a ~a ~a..." #\Return glyph type-name target)
-         (finish-output)))
+       (if tty-p
+           (let ((line (format nil "  ~a ~a ~a " glyph type-name target)))
+             (start-spinner line))
+           (format t "  ~a ~a ~a~%" glyph type-name target)))
       (:after
+       (stop-spinner)
        (if tty-p
            (format t "~C  ~a ~a ~a~%" #\Return glyph type-name target)
            (format t "  ~a ~a ~a~%" glyph type-name target))
        (finish-output))
       (:failed
+       (stop-spinner)
        (if tty-p
            (format t "~C  ~a ~a ~a~%" #\Return glyph type-name target)
            (format t "  ~a ~a ~a~%" glyph type-name target))
@@ -330,6 +377,7 @@ Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
          (format t "    ~a~%" (cdr entry)))
        (finish-output))
       (:skipped
+       (stop-spinner)
        (if tty-p
            (format t "~C  ~a ~a ~a~%" #\Return glyph type-name target)
            (format t "  ~a ~a ~a~%" glyph type-name target))
@@ -734,8 +782,8 @@ or a clear diagnosis of why it can't resolve -- used by `linacs doctor`."
    (list :name "apply" :fn #'cmd-apply
           :summary "Execute the ordered action list"
           :options '(:root :profile :dry-run :continue :sudo-password-stdin :sudo-reset :verbose :quiet :help)
-          :examples '("linacs apply -C ~/my-home --profile work-laptop   # sudo (if needed) is per-action, not up front"
-                      "linacs apply -C ~/my-home --profile work-laptop -n   # dry run"
+           :examples '("linacs apply -C ~/my-home --profile work-laptop   # sudo prompted once up front, not per-action"
+                       "linacs apply -C ~/my-home --profile work-laptop -n   # dry run"
                       "linacs apply --sudo-password-stdin < ~/.sudo-pass"))
    (list :name "diff" :fn #'cmd-diff
           :summary "Show which actions would change something"

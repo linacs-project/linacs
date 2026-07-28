@@ -87,6 +87,7 @@ than aborting the entire run."
 
         (unless (eq execute-mode :plan-only)
           (preflight-notice ordered)
+          (preflight-sudo-prompt ordered)
 
           (let* ((prune (member :prune-explicitly-disabled (getf home :traits)))
                  (failed-ids (make-hash-table :test 'equal)))

@@ -99,22 +99,24 @@
    #:run-pipeline
    #:*pipeline-hooks*
 
-   ;; privilege
-    #:privileged-p
-    #:run-privileged
-    #:preflight-notice
+    ;; privilege
+     #:privileged-p
+     #:run-privileged
+     #:preflight-notice
+     #:*sudo-askpass*
+     #:apply-sudo-password-stdin
+     #:sudo-reset-after-run
+
+    ;; helpers
+    #:read-sudo-password
+    #:*sudo-password*
+    #:*sudo-requiring-action-types*
     #:action-needs-privilege-p
     #:*non-privileged-package-vias*
-    #:sudo-n-or-a-prefix
-    #:*sudo-askpass*
-    #:apply-sudo-password-stdin
-    #:sudo-reset-after-run
-
-   ;; helpers
-   #:read-sudo-password
-   #:shell-ok-p
-   #:which
-   #:report
+    #:preflight-sudo-prompt
+    #:shell-ok-p
+    #:which
+    #:report
 
    ;; discovery
    #:discover-project
