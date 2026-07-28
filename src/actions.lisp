@@ -131,6 +131,18 @@ ACTION-ID from *ACTION-RESULTS*, or NIL if not yet executed."
                        c)))
     (equal (strip a) (strip b))))
 
+(defun resolve-package-vias (actions)
+  "Walk ACTIONS and inject :via for any :package action missing it.
+Uses RESOLVE-PACKAGE-VIA which reads *PACKAGE-PREFERENCE-CHAIN*,
+dynamically bound during RUN-PIPELINE.  Extends each plist in place
+with NCONC so the change is visible to code that holds a reference
+to the same cons cells (e.g. the ordered action list in CMD-PLAN)."
+  (dolist (action actions)
+    (when (and (eq (action-type action) :package)
+               (not (getf action :via)))
+      (let ((via (resolve-package-via action)))
+        (nconc action (list :via via))))))
+
 (defun dedup-actions (actions)
   "Deduplicate ACTIONS by identity. :priority :user (highest) beats
 :priority :provider. :force t wins any tie regardless of priority. Two

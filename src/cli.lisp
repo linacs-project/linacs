@@ -127,6 +127,13 @@ never notices this; a persistent one does."
         (concatenate 'string str (make-string extra :initial-element #\Space))
         str)))
 
+(defun package-via-label (action)
+  "Return a string label for the :via of a :package action, or empty string for non-package actions."
+  (let ((via (getf action :via)))
+    (if via
+        (format nil ":~(~a~)" via)
+        "")))
+
 (defun print-table (headers rows)
   "Print a simple aligned table (a list of HEADERS strings, then each row
 in ROWS as a list of strings, one per column) with a dashed rule under
@@ -231,18 +238,20 @@ Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
             (loop for a in ordered
                   for id = (action-identity a)
                   for glyph = (action-status-glyph a prune-p)
+                  for via = (package-via-label a)
                   collect (list glyph
                                 (string-downcase (string (action-type a)))
                                 (princ-to-string (action-target a))
+                                via
                                 (if verbose (provenance-string id) "")))))
       (format t "Resolved plan for ~a (traits: ~a):~%~%" (getf home :name) (or (getf home :traits) "none"))
       (let ((display (mapcar (lambda (row)
                                (cons (colorize-glyph (first row)) (rest row)))
                              annotated)))
         (if verbose
-            (print-table '("STATUS" "TYPE" "TARGET" "PROVENANCE") display)
-            (print-table '("STATUS" "TYPE" "TARGET")
-                         (mapcar (lambda (r) (subseq r 0 3)) display))))
+            (print-table '("STATUS" "TYPE" "TARGET" "VIA" "PROVENANCE") display)
+            (print-table '("STATUS" "TYPE" "TARGET" "VIA")
+                         (mapcar (lambda (r) (subseq r 0 4)) display))))
       (let* ((to-apply (count "[+]" annotated :key #'first :test #'string=))
              (present (count "[!]" annotated :key #'first :test #'string=))
              (remove (count "[x]" annotated :key #'first :test #'string=))
@@ -337,9 +346,11 @@ Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
                                    (:failed "[x]")
                                    (:skipped "[~]")
                                    (t "[-]"))
+                     for via = (package-via-label a)
                      collect (list glyph
                                    (string-downcase (string (action-type a)))
-                                   (princ-to-string (action-target a)))))
+                                   (princ-to-string (action-target a))
+                                   via)))
          (counts (loop for v being the hash-value of results
                        for status = (getf v :status)
                        count status into total
@@ -349,7 +360,7 @@ Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
                        count (eq status :skipped) into skipped
                        finally (return (list total applied unchanged failed skipped)))))
     (format t "~%")
-    (print-table '("STATUS" "TYPE" "TARGET") rows)
+    (print-table '("STATUS" "TYPE" "TARGET" "VIA") rows)
     (destructuring-bind (total applied unchanged failed skipped) counts
       (format t "~%~d action(s): ~d applied, ~d unchanged~@[, ~d failed~]~@[, ~d skipped~]~%"
               total applied unchanged
@@ -439,31 +450,35 @@ we call execute-action separately to collect :would-change statuses."
           (let* ((rows (loop for a in ordered for i from 1
                              for glyph = (action-status-glyph a prune-p)
                              for id = (action-identity a)
+                             for via = (package-via-label a)
                              for facts-str = (let ((prov (action-provenance id)))
                                                (and prov (getf prov :facts-snapshot)
                                                     (format nil "~{~a~^, ~}" (getf prov :facts-snapshot))))
                              collect (list (princ-to-string i) glyph
                                            (string-downcase (string (action-type a)))
                                            (princ-to-string (action-target a))
+                                           via
                                            (provenance-string id)
                                            (or facts-str ""))))
-                 (display (mapcar (lambda (row)
-                                    (destructuring-bind (num glyph &rest rest) row
-                                      (list* num (colorize-glyph glyph) rest)))
-                                  rows)))
-            (print-table '("#" "STATUS" "TYPE" "TARGET" "PROVENANCE" "FACTS INVOLVED")
-                         display))
-          (let* ((rows (loop for a in ordered for i from 1
-                             for glyph = (action-status-glyph a prune-p)
-                             collect (list (princ-to-string i) glyph
-                                           (string-downcase (string (action-type a)))
-                                           (princ-to-string (action-target a)))))
-                 (display (mapcar (lambda (row)
-                                    (destructuring-bind (num glyph &rest rest) row
-                                      (list* num (colorize-glyph glyph) rest)))
-                                  rows)))
-            (print-table '("#" "STATUS" "TYPE" "TARGET")
-                         display))))
+                (display (mapcar (lambda (row)
+                                   (destructuring-bind (num glyph &rest rest) row
+                                     (list* num (colorize-glyph glyph) rest)))
+                                 rows)))
+          (print-table '("#" "STATUS" "TYPE" "TARGET" "VIA" "PROVENANCE" "FACTS INVOLVED")
+                       display))
+        (let* ((rows (loop for a in ordered for i from 1
+                            for glyph = (action-status-glyph a prune-p)
+                            for via = (package-via-label a)
+                            collect (list (princ-to-string i) glyph
+                                          (string-downcase (string (action-type a)))
+                                          (princ-to-string (action-target a))
+                                          via)))
+                (display (mapcar (lambda (row)
+                                   (destructuring-bind (num glyph &rest rest) row
+                                     (list* num (colorize-glyph glyph) rest)))
+                                 rows)))
+          (print-table '("#" "STATUS" "TYPE" "TARGET" "VIA")
+                       display))))
     (format t "~%~d action(s).~%~a~%" (length ordered) (plan-summary-legend))))
 
 (defun cmd-graph (opts)
