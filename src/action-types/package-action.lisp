@@ -186,9 +186,9 @@ and falls back to :system if nothing in the chain is available."
        (execute-flatpak-package action name :mode mode))
       (handler
        (funcall handler action name :mode mode))
-      (t
-       (let ((installed (package-installed-p via name)))
-         (case mode
+   (t
+        (let ((installed (package-installed-p via name)))
+          (case mode
            (:check (report (if installed :unchanged :would-change) :target name))
            (:apply
             (unless installed

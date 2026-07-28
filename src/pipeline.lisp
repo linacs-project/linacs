@@ -78,6 +78,7 @@ than aborting the entire run."
                                (getf home :actions)))
          (all-actions (append user-actions provider-actions)))
     (declare (ignore ignored))
+    (resolve-package-vias all-actions)
     (run-hooks :after-resolve *facts* all-actions)
 
     (let ((deduped (dedup-actions all-actions)))
