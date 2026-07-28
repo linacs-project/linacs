@@ -180,7 +180,7 @@ I ship with a growing set of plugins, each in its own ASDF system, auto-discover
 
 | Plugin | What it manages |
 |--------|----------------|
-| [linacs-fedora](../linacs-plugins/distributions/linacs-fedora/README.md) | Facts: rpm-ostree, toolbox, flatpak |
+| [linacs-fedora](../linacs-plugins/distributions/linacs-fedora/README.md) | Fact: rpm-ostree (Fedora Atomic); :toolbox, :flatpak facts moved to core |
 | [linacs-kde-plasma](../linacs-plugins/desktops/linacs-kde-plasma/README.md) | KDE Plasma configuration via `kwriteconfig5` |
 | [linacs-security](../linacs-plugins/tools/linacs-security/README.md) | GPG (default/hardened/YubiKey), firewalld (home/public/server) |
 
@@ -193,7 +193,7 @@ You write your own the same way. Drop a `linacs-*` ASDF system in your Quicklisp
 - **You declare intent; I encode knowledge.** You say `(use-feature :editor)`. I know that means a package, maybe a config directory, an environment variable.
 - **Extend without forking.** New features, providers, catalogs, action types — all registered at load time. The core is deliberately small.
 - **No DSL variables.** Facts replace them. Profiles override facts per machine. You never bind a variable in your home definition.
-- **Mutable by default, immutable when needed.** `:via :toolbox` handles rpm-ostree. More backends can be added.
+- **Mutable by default, immutable when needed.** `:via :toolbox` handles rpm-ostree via a toolbox/podman container, `:via :flatpak` handles Flatpak user-or-system scope, `:via :appimage` handles standalone executables. More backends can be added.
 - **Idempotency lives in the executor, not in a lockfile.** Run me twice, get the same result. No diff against yesterday's snapshot.
 - **No rollback.** Run me again. I converge. If an action fails, I tell you — I don't revert the ones that succeeded.
 

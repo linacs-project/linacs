@@ -129,6 +129,21 @@ Optional keyword arguments:
   (register-fact-prober :container-p #'probe-container-p "linacs-core"
     :type '(member t nil)
     :doc "T if running inside a container")
+  (register-fact-prober :toolbox-p #'probe-toolbox-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if toolbox or podman binary is on PATH (containerised CLI tools)")
+  (register-fact-prober :in-toolbox-p #'probe-in-toolbox-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if running inside a toolbox container ($TOOLBOX_PATH is set)")
+  (register-fact-prober :flatpak-p #'probe-flatpak-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if flatpak binary is on PATH")
+  (register-fact-prober :podman-p #'probe-podman-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if podman binary is on PATH (rootless containers)")
+  (register-fact-prober :appimage-p #'probe-appimage-p "linacs-core"
+    :type '(member t nil)
+    :doc "T if FUSE is available (AppImages can execute)")
   (register-fact-prober :sys-vendor #'probe-sys-vendor "linacs-core"
     :type '(or string (member :unknown))
     :doc "System vendor string from DMI")
@@ -427,6 +442,23 @@ bus with a less descriptive name)."
            (let ((cgroup (fact-read-whole-file "/proc/1/cgroup")))
              (and cgroup (or (search "docker" cgroup) (search "lxc" cgroup) (search "kubepods" cgroup)))))
        t))
+
+;;; --- :toolbox-p, :in-toolbox-p, :flatpak-p, :podman-p, :appimage-p ----------
+
+(defun probe-toolbox-p ()
+  (or (which "toolbox") (which "podman")))
+
+(defun probe-in-toolbox-p ()
+  (uiop:getenvp "TOOLBOX_PATH"))
+
+(defun probe-flatpak-p ()
+  (which "flatpak"))
+
+(defun probe-podman-p ()
+  (which "podman"))
+
+(defun probe-appimage-p ()
+  (which "fusermount"))
 
 ;;; --- :sys-vendor, :product-name --------------------------------------------
 ;;;

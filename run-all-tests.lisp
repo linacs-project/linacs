@@ -84,7 +84,7 @@
   (format t "TEST RESULTS SUMMARY~%")
   (format t "======================================~%~%")
 
-  (if results
+  (if (typep results 'integer)
       (progn
         (format t "✗ Tests failed: ~a~%~%" results)
         (format t "Status: FAILED~%~%"))

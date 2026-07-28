@@ -589,10 +589,13 @@ A new action type is a function of `(action &key mode)` handling
 `:description`. A new `:via` handler for `:package` is a function of
 `(action name &key mode)` where `name` is already resolved to a string,
 plus one `register-package-via-handler` call — for example, the
-`linacs-fedora` plugin registers `:toolbox` and `:rpm-ostree` handlers so
-`(package :ripgrep :via :toolbox)` works transparently. Look at any file
-in `src/action-types/` as a template for a full action type;
-`command.lisp` is the simplest complete example.
+`linacs-fedora` plugin registers an `:rpm-ostree` handler so
+`(package :docker :via :rpm-ostree)` works transparently. Built-in
+handlers (`:flatpak`, `:toolbox`, `:podman`, `:appimage`, `:pip`, `:npm`,
+`:system`) live in `src/action-types/package-action.lisp` and are
+registered at load time. Look at any file in `src/action-types/` as a
+template for a full action type; `command.lisp` is the simplest complete
+example.
 
 ---
 
@@ -822,6 +825,26 @@ uninstalled once pruned). Expands to `:package`, defaulting `:via` to
 (package "typescript" :via :npm)
 ```
 
+**Via toolbox/podman (containerised CLI tools):**
+
+```lisp
+(package :ripgrep :via :toolbox)
+(package :jq :via :podman)
+```
+
+Both create a toolbox container and wrapper scripts in `~/.local/bin/`.
+The `:podman` via delegates to the same handler as `:toolbox`.
+
+**Via AppImage (portable Linux executables):**
+
+```lisp
+(package :obsidian :via :appimage)
+```
+
+The AppImage handler checks whether the target path exists and is
+executable.  Download or build logic should be provided by a plugin or
+`:command` action — the handler itself only manages presence/absence.
+
 **Via Flatpak.** Flatpak app IDs are already the same across every
 distro, so unlike `:via :system`, this never consults your catalog — the
 string you give is used exactly as written. Give it as a **string, not a
@@ -853,18 +876,30 @@ only ask for privileges I actually intend to use.
 
 **Plugin-provided `:via` options.** Plugins can register new `:via`
 handlers for the `:package` action using `register-package-via-handler`.
-For example, the `linacs-fedora` plugin adds `:via :toolbox` and
-`:via :rpm-ostree`:
+For example, the `linacs-fedora` plugin adds `:via :rpm-ostree` for
+Fedora Atomic Desktops:
 
 ```lisp
-(package :ripgrep :via :toolbox)
 (package :docker :via :rpm-ostree)
 ```
 
-These work exactly like the built-in `:via` options — the same
+This works exactly like the built-in `:via` options — the same
 idempotency, the same `:disabled t` removal semantics, the same
 dependencies. No core changes needed; just load the plugin and use the
 keyword.
+
+The following `:via` options are built into core for immediate use
+without any plugin:
+
+| `:via` | Purpose |
+|--------|---------|
+| `:system` | System package manager (dnf, apt, pacman, etc.) |
+| `:pip` | Python packages |
+| `:npm` | Node.js packages |
+| `:flatpak` | Flatpak applications and runtimes |
+| `:toolbox` | Containerised CLI tools (toolbox daemon) |
+| `:podman` | Alias for the toolbox handler |
+| `:appimage` | Standalone AppImage executables |
 
 **Auto-selection with `package-preference`.** When you omit `:via`
 from a `(package ...)` form, I pick the best method automatically
@@ -1089,6 +1124,11 @@ command like `uname`) — no sudo, no distro-specific tooling required:
 | `:root-disk-type` | `:nvme`, `:ssd`, `:hdd`, `:unknown` | resolves `/`'s device from `/proc/mounts` through any LVM/LUKS/mdraid stacking, then `/sys/block/*/queue/rotational` |
 | `:fingerprint-p` | `t`/`nil` | `"fingerprint"` in any `/sys/bus/usb/devices/*/product` (heuristic — won't catch a non-USB reader) |
 | `:container-p` | `t`/`nil` | `/.dockerenv`, `/run/.containerenv`, `$container`, or `docker`/`lxc`/`kubepods` in `/proc/1/cgroup` |
+| `:toolbox-p` | `t`/`nil` | `toolbox` or `podman` binary on PATH |
+| `:in-toolbox-p` | `t`/`nil` | `$TOOLBOX_PATH` is set (we are _inside_ a toolbox container) |
+| `:flatpak-p` | `t`/`nil` | `flatpak` binary on PATH |
+| `:podman-p` | `t`/`nil` | `podman` binary on PATH |
+| `:appimage-p` | `t`/`nil` | `fusermount` binary on PATH (FUSE is available) |
 | `:sys-vendor` | a string, or `:unknown` | `/sys/class/dmi/id/sys_vendor` |
 | `:product-name` | a string, or `:unknown` | `/sys/class/dmi/id/product_name` |
 

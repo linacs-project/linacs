@@ -26,13 +26,29 @@ should answer NIL here -- individual actions escalate on their own as
 needed, rather than requiring the whole process to run as root."
   (eql (current-uid) 0))
 
+(defvar *non-privileged-package-vias*
+  '((:via :flatpak :scope :user))
+  "List of plist partial-match patterns that identify :package actions
+which do NOT need privilege escalation (and therefore won't be counted in
+the preflight notice or escalated to sudo). Each entry is a plist of
+property-value pairs. An action is considered non-privileged if every
+property in any one entry matches the action's corresponding property.
+
+Built-in entries:
+  (:via :flatpak :scope :user)   — Flatpak user-scope installs never escalate.
+
+Plugins may push additional entries to declare their own non-privileged
+vias (e.g. (:via :pip), (:via :npm)).")
+
 (defun action-needs-privilege-p (action)
-  "T if ACTION is a :package install that will typically need root. Every
-:package via is privileged EXCEPT a Flatpak install explicitly scoped
-:user, which deliberately never escalates (see package-action.lisp). This
-is used only for the informational notice below, not to gate anything."
-  (and (eq (action-type action) :package)
-       (not (and (eq (getf action :via) :flatpak) (eq (getf action :scope :system) :user)))))
+  "T if ACTION is a :package install that will typically need root. This
+is used only for the informational preflight notice, not to gate anything.
+See *NON-PRIVILEGED-PACKAGE-VIAS* for which actions are excluded."
+  (flet ((matches-non-privileged-p (pattern)
+           (loop for (prop val) on pattern by #'cddr
+                 always (equal (getf action prop) val))))
+    (and (eq (action-type action) :package)
+         (not (some #'matches-non-privileged-p *non-privileged-package-vias*)))))
 
 (defun preflight-notice (ordered-actions)
   "Log a one-line, purely informational notice if the plan contains

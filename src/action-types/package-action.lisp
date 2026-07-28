@@ -129,6 +129,184 @@ than asking for it up front."
          (flatpak-run action (list "flatpak" "uninstall" "-y" (flatpak-scope-flag action) name)))
        (report :removed :target name)))))
 
+;;; --- Toolbox & Podman ----------------------------------------------------
+;;;
+;;; Containerised CLI tool installation via toolbox or podman. The :podman
+;;; via delegates to the same implementation since toolbox is a podman
+;;; wrapper; a dedicated :podman handler is registered for users who prefer
+;;; the lower-level name.
+
+(defun container-name (action)
+  (or (getf action :container-name) "linacs"))
+
+(defun toolbox-container-exists-p (container)
+  (shell-ok-p (format nil "toolbox list --containers 2>/dev/null | grep -Fq '~a'" container)))
+
+(defun create-toolbox-container (container)
+  (unless (toolbox-container-exists-p container)
+    (linacs.log:info "Creating toolbox container '~a' …" container)
+    (unless (zerop (nth-value 2
+                    (uiop:run-program (list "toolbox" "create" "--assumeyes" "--container" container)
+                                      :output t :error-output t :ignore-error-status t)))
+      (error 'execution-failure :action-type :package :target container
+             :underlying "toolbox create failed"))))
+
+(defun toolbox-package-installed-p (container package)
+  (shell-ok-p (format nil "toolbox run --container '~a' rpm -q '~a' 2>/dev/null"
+                       container package)))
+
+(defun wrapper-command (action name)
+  (or (getf action :as) name))
+
+(defun ensure-wrapper-script (cmd container)
+  (let* ((dir (uiop:ensure-directory-pathname
+               (format nil "~a/.local/bin/" (uiop:getenv "HOME"))))
+         (path (make-pathname :name cmd :directory (pathname-directory dir))))
+    (ensure-directories-exist dir)
+    (unless (uiop:file-exists-p path)
+      (with-open-file (f path :direction :output :if-exists :supersede)
+        (format f "#!/bin/sh
+exec toolbox run --container '~a' ~a \"$@\"~%"
+                container cmd))
+      (uiop:run-program (list "chmod" "+x" (namestring path)))
+      (linacs.log:info "Created wrapper: ~a" (namestring path)))))
+
+(defun remove-wrapper-script (cmd)
+  (let ((path (format nil "~a/.local/bin/~a" (uiop:getenv "HOME") cmd)))
+    (when (uiop:file-exists-p path)
+      (delete-file path)
+      (linacs.log:info "Removed wrapper: ~a" path))))
+
+(defun toolbox-sudo-run (container args)
+  "Run ARGS with sudo inside toolbox CONTAINER.
+Tries sudo -n first (cached credentials inside the container).
+Falls back to prompting for a password and using sudo -S with piped
+stdin, so the password is forwarded through toolbox to the container's
+sudo without needing direct terminal access."
+  (let* ((cmd (list* "toolbox" "run" "--container" container "sudo" "-n" args))
+         (exit (nth-value 2
+                 (uiop:run-program cmd :output t :error-output t
+                                   :ignore-error-status t))))
+    (if (zerop exit)
+        exit
+        (let ((password (read-sudo-password)))
+          (nth-value 2
+            (uiop:run-program
+              (list* "toolbox" "run" "--container" container "sudo" "-S" args)
+              :input (make-string-input-stream (format nil "~a~%" password))
+              :output t :error-output t
+              :ignore-error-status t))))))
+
+(defun execute-toolbox-package (action name &key mode)
+  (let* ((container (container-name action))
+         (cmd       (wrapper-command action name))
+         (pkg       (resolved-package-name action :system)))
+    (case mode
+      (:check
+       (let ((installed (and (toolbox-container-exists-p container)
+                             (toolbox-package-installed-p container pkg))))
+         (report (if installed :unchanged :would-change) :target name)))
+      (:apply
+       (create-toolbox-container container)
+       (if (toolbox-package-installed-p container pkg)
+           (report :unchanged :target name)
+           (progn
+             (linacs.log:info "Installing ~a in toolbox container '~a' …" pkg container)
+             (unless (zerop (toolbox-sudo-run container (list "dnf" "install" "-y" pkg)))
+               (error 'execution-failure :action-type :package :target pkg
+                      :underlying "dnf install inside the toolbox container failed"))
+             (ensure-wrapper-script cmd container)
+             (report :changed :target name))))
+      (:remove
+       (when (and (toolbox-container-exists-p container)
+                  (toolbox-package-installed-p container pkg))
+         (linacs.log:info "Removing ~a from toolbox container '~a' …" pkg container)
+         (unless (zerop (toolbox-sudo-run container (list "dnf" "remove" "-y" pkg)))
+           (error 'execution-failure :action-type :package :target pkg
+                  :underlying "dnf remove inside the toolbox container failed")))
+       (remove-wrapper-script cmd)
+       (report :removed :target name)))))
+
+;;; --- AppImage ------------------------------------------------------------
+
+(defun file-executable-p (path)
+  "Check if the file at PATH exists and is executable."
+  (and (uiop:file-exists-p path)
+       (shell-ok-p (format nil "test -x ~a" path))))
+
+(defun appimage-default-path (target)
+  (let ((home (uiop:getenv "HOME")))
+    (format nil "~a/.local/bin/~a" home (string-downcase (string target)))))
+
+(defun execute-appimage-package (action name &key mode)
+  "Minimal AppImage handler.  Ensures the target path exists and is
+executable.  Download or build logic (e.g. from GitHub releases) is
+expected to be provided by an external plugin."
+  (let* ((target (action-target action))
+         (path   (if (stringp target) target (appimage-default-path target)))
+         (exists (uiop:file-exists-p path)))
+    (case mode
+      (:check
+       (report (if (file-executable-p path)
+                   :unchanged :would-change)
+               :target name))
+      (:apply
+       (if (file-executable-p path)
+           (report :unchanged :target name)
+           (linacs.log:warn* "AppImage ~a not found at ~a; download or place it there manually."
+                            name path)))
+      (:remove
+       (when exists
+         (delete-file path)
+         (linacs.log:info "Removed AppImage: ~a" path))
+       (report :removed :target name)))))
+
+;;; --- pip & npm ------------------------------------------------------------
+
+(defun execute-pip-package (action name &key mode)
+  (let ((installed (package-installed-p :pip name)))
+    (case mode
+      (:check (report (if installed :unchanged :would-change) :target name))
+      (:apply
+       (unless installed
+         (uiop:run-program (install-command :pip name) :output t :error-output t
+                           :ignore-error-status t))
+       (report (if installed :unchanged :changed) :target name))
+      (:remove
+       (when installed
+         (uiop:run-program (uninstall-command :pip name) :output t :error-output t
+                           :ignore-error-status t))
+       (report :removed :target name)))))
+
+(defun execute-npm-package (action name &key mode)
+  (let ((installed (package-installed-p :npm name)))
+    (case mode
+      (:check (report (if installed :unchanged :would-change) :target name))
+      (:apply
+       (unless installed
+         (uiop:run-program (install-command :npm name) :output t :error-output t
+                           :ignore-error-status t))
+       (report (if installed :unchanged :changed) :target name))
+      (:remove
+       (when installed
+         (uiop:run-program (uninstall-command :npm name) :output t :error-output t
+                           :ignore-error-status t))
+       (report :removed :target name)))))
+
+;;; --- System package manager (:via :system) --------------------------------
+
+(defun execute-system-package (action name &key mode)
+  (let ((installed (package-installed-p :system name)))
+    (case mode
+      (:check (report (if installed :unchanged :would-change) :target name))
+      (:apply
+       (unless installed
+         (run-privileged (install-command :system name)))
+       (report (if installed :unchanged :changed) :target name))
+      (:remove
+       (when installed (run-privileged (uninstall-command :system name)))
+       (report :removed :target name)))))
+
 ;;; --- Via-handler registry ------------------------------------------------
 ;;;
 ;;; Plugins register custom dispatch logic for new :via values (e.g.
@@ -146,29 +324,25 @@ than asking for it up front."
   "Look up a handler for :via VIA.  Returns the handler or NIL."
   (gethash via *package-via-handlers*))
 
-; --- Dispatch ------------------------------------------------------------
+;; --- Handler registrations -----------------------------------------------
+
+(register-package-via-handler :flatpak  #'execute-flatpak-package)
+(register-package-via-handler :toolbox  #'execute-toolbox-package)
+(register-package-via-handler :podman   #'execute-toolbox-package)
+(register-package-via-handler :appimage #'execute-appimage-package)
+(register-package-via-handler :pip      #'execute-pip-package)
+(register-package-via-handler :npm      #'execute-npm-package)
+(register-package-via-handler :system   #'execute-system-package)
+
+;;; --- Dispatch ------------------------------------------------------------
 
 (defun execute-package (action &key mode)
   (let* ((via (or (getf action :via)
                   (resolve-package-via action)))
          (name (resolved-package-name action via))
-         (handler (find-package-via-handler via)))
-    (cond
-      ((eq via :flatpak)
-       (execute-flatpak-package action name :mode mode))
-      (handler
-       (funcall handler action name :mode mode))
-   (t
-        (let ((installed (package-installed-p via name)))
-          (case mode
-           (:check (report (if installed :unchanged :would-change) :target name))
-           (:apply
-            (unless installed
-              (run-privileged (install-command via name)))
-            (report (if installed :unchanged :changed) :target name))
-           (:remove
-            (when installed (run-privileged (uninstall-command via name)))
-            (report :removed :target name))))))))
+         (handler (or (find-package-via-handler via)
+                      (find-package-via-handler :system))))
+    (funcall handler action name :mode mode)))
 
 (register-action-type :package #'execute-package
-                      :description "Install a package via the system package manager, pip, npm, or Flatpak")
+                      :description "Install a package via the system package manager, pip, npm, Flatpak, toolbox, podman, or AppImage")

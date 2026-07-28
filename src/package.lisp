@@ -104,6 +104,7 @@
     #:run-privileged
     #:preflight-notice
     #:action-needs-privilege-p
+    #:*non-privileged-package-vias*
     #:sudo-n-or-a-prefix
     #:*sudo-askpass*
     #:apply-sudo-password-stdin
