@@ -443,6 +443,85 @@ output, that's normal, and it's not a bug.
 - **No rollback.** I converge forward. Re-running me is always safe and
   is always the answer when something goes wrong mid-run.
 
+### 3.10 Composite features — bundling granular capabilities
+
+The examples so far have been single-purpose features (`:editor`, `:shell`,
+`:security`). But what if you want a feature like `:office` that bundles
+word processing, spreadsheets, *and* email — and you want LibreOffice for
+documents but Thunderbird for mail?
+
+The answer is the **composite feature** convention. A composite feature:
+
+1. Defines itself with `:composed-of` listing its sub-features.
+2. Registers a **provider that returns no actions** — the sub-features do
+   all the work.
+3. Relies on the pipeline's override semantics: an explicit
+   `(use-feature :email :via :thunderbird)` always beats whatever
+   `:requires` pulls in from a composite feature.
+
+```lisp
+;; In features/office.lisp — a plugin author defines granular
+;; sub-features and a composite feature that bundles them:
+(define-feature :word-processor
+  :description "Document editing")
+(define-feature :spreadsheet
+  :description "Spreadsheet editing")
+(define-feature :email
+  :description "Email client")
+(define-feature :calendar
+  :description "Calendar application")
+(define-feature :office
+  :description "Office productivity suite — LibreOffice + Thunderbird"
+  :composed-of (:word-processor :spreadsheet :email :calendar))
+
+;; In providers/office.lisp — provider for each sub-feature:
+(define-provider :libreoffice :for :word-processor :default t
+  (lambda (facts)
+    (list '(:action :package :target :libreoffice-writer :via :system))))
+(define-provider :libreoffice :for :spreadsheet :default t
+  (lambda (facts)
+    (list '(:action :package :target :libreoffice-calc :via :system))))
+(define-provider :thunderbird :for :email :default t
+  (lambda (facts)
+    (list '(:action :package :target "org.mozilla.Thunderbird" :via :flatpak))))
+(define-provider :thunderbird :for :calendar :default t
+  (lambda (facts)
+    (list '(:action :package :target "org.mozilla.Thunderbird" :via :flatpak))))
+
+;; The composite feature's provider returns nothing — sub-features
+;; pulled in via :requires (auto-derived from :composed-of) do the work:
+(define-provider :libreoffice-thunderbird :for :office :default t
+  (lambda (facts) (declare (ignore facts)) nil))
+```
+
+Now, the user's `home.lisp`:
+
+```lisp
+;; home.lisp — get everything, then override email
+(use-feature :office)
+(use-feature :email :via :aerc)   ;; overrides the :default t provider
+```
+
+The pipeline sees both `use-feature` calls. `:office` pulls in
+`:word-processor`, `:spreadsheet`, `:email`, `:calendar` via `:requires`.
+But the user's explicit `(use-feature :email :via :aerc)` takes priority
+for the `:email` feature — so you get LibreOffice for documents and aerc
+for email, no provider forking required.
+
+`linacs explain` makes the composition visible:
+
+```
+FEATURE          PROVIDER USED    DESCRIPTION                      COMPOSED OF
+office           libreoffice-thu  Office productivity suite        word-processor, spreadsheet, email, calendar
+email            aerc             Email client                     (none)
+```
+
+The composite feature convention is entirely a plugin-author pattern —
+there's no special `define-composite-feature` macro, just a consistent
+use of `:composed-of` and a provider that returns no actions. This keeps
+the core simple while giving plugin authors a standard way to offer
+pre-assembled capability bundles.
+
 ---
 
 ## 4. How LINACS Is Built - Architecture
@@ -1248,12 +1327,30 @@ work unchanged and are treated as `:system`-via entries.
   but `linacs list`/`linacs doctor` can surface them.
 - `:requires` is the real mechanism: when you `use-feature :development`,
   I make sure `:editor` is resolved first.
+- `:composed-of` lists sub-features this feature bundles. If you don't
+  also write `:requires`, I use the same list as `:requires` automatically.
+  `linacs list` and `linacs explain` show composed-of relationships so
+  you know which sub-features you can override (see §3.10 for the
+  composite feature convention).
 
 **A feature with no dependencies at all:**
 
 ```lisp
 (define-feature :shell :requires nil))
 ```
+
+**A composite feature** that bundles sub-features under a single name:
+
+```lisp
+(define-feature :office
+  :description "Office productivity suite"
+  :composed-of (:word-processor :spreadsheet :email :calendar))
+```
+
+Since `:requires` wasn't given here, it's set to the same list as
+`:composed-of`. The user overrides individual sub-features in their
+`home.lisp` — the pipeline respects explicit `use-feature` calls over
+what `:requires` pulls in automatically:
 
 ### 5.18 Providers
 

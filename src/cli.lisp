@@ -435,7 +435,7 @@ we call execute-action separately to collect :would-change statuses."
                                                     :project-root (cli-opts-root opts)
                                                     :execute-mode :plan-only)
     (format t "Home: ~a~%Traits: ~a~%~%Features used:~%" (getf home :name) (or (getf home :traits) "none"))
-    (print-table '("FEATURE" "PROVIDER USED" "DESCRIPTION")
+    (print-table '("FEATURE" "PROVIDER USED" "DESCRIPTION" "COMPOSED OF")
                  (mapcar (lambda (r)
                            (let* ((fname (getf r :feature))
                                   (feature (feature-by-name fname)))
@@ -443,7 +443,8 @@ we call execute-action separately to collect :would-change statuses."
                                (declare (ignore fn))
                                (list (string-downcase (string fname))
                                      (if chosen-name (string-downcase (string chosen-name)) "(skipped)")
-                                     (or (feature-description feature) "")))))
+                                     (or (feature-description feature) "")
+                                     (composed-of-summary feature)))))
                          (getf home :use-features)))
     (format t "~%Action order:~%")
     (let* ((prune-p (member :prune-explicitly-disabled (getf home :traits)))
@@ -493,7 +494,10 @@ we call execute-action separately to collect :would-change statuses."
                  (feature (feature-by-name fname)))
             (format t "~a~@[ -- ~a~]~%" (string-downcase (string fname)) (feature-description feature))
             (dolist (dep (feature-requires feature))
-              (format t "  requires ~a~%" (string-downcase (string dep))))))
+              (format t "  requires ~a~%" (string-downcase (string dep))))
+            (let ((composed (feature-composed-of feature)))
+              (when composed
+                (format t "  composed of: ~{~(~a~)~^, ~}~%" composed)))))
         (format t "(no use-feature forms in this home)~%"))))
 
 (defun cmd-export (opts)
@@ -517,15 +521,23 @@ we call execute-action separately to collect :would-change statuses."
                         (reverse candidates)))
         "(none registered)")))
 
+(defun composed-of-summary (feature)
+  "One-line summary of the feature's :composed-of sub-features, or empty."
+  (let ((composed (feature-composed-of feature)))
+    (if composed
+        (format nil "~{~(~a~)~^, ~}" composed)
+        "")))
+
 (defun cmd-list (opts)
   (bootstrap opts)
   (format t "Features:~%")
   (let ((rows (loop for k being the hash-key of *feature-registry* using (hash-value f)
                      collect (list (string-downcase (string k))
                                     (or (feature-description f) "")
+                                    (composed-of-summary f)
                                     (feature-provider-summary k)))))
     (if rows
-        (print-table '("FEATURE" "DESCRIPTION" "PROVIDERS") (sort rows #'string< :key #'first))
+        (print-table '("FEATURE" "DESCRIPTION" "COMPOSED OF" "PROVIDERS") (sort rows #'string< :key #'first))
         (format t "  (none registered)~%")))
   (terpri)
 

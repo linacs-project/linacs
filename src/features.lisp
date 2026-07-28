@@ -27,7 +27,8 @@
   description
   tags
   provides
-  requires)
+  requires
+  composed-of)
 
 (defvar *feature-registry* (make-hash-table :test 'eq)
   "Maps feature name (keyword) -> FEATURE struct.")
@@ -37,14 +38,16 @@
 
 ;;; ---- Feature definition -------------------------------------------------
 
-(defmacro define-feature (name &key description tags provides requires)
-  "All of DESCRIPTION, TAGS, PROVIDES, and REQUIRES are taken as literal
-data at macroexpansion time (consistent with the rest of the DSL) -- e.g.
-:requires (:terminal :fonts) is a literal list of feature names, not code
-to evaluate."
-  `(setf (gethash ,name *feature-registry*)
-         (make-feature :name ,name :description ',description
-                       :tags ',tags :provides ',provides :requires ',requires)))
+(defmacro define-feature (name &key description tags provides requires composed-of)
+  "All of DESCRIPTION, TAGS, PROVIDES, REQUIRES, and COMPOSED-OF are taken
+as literal data at macroexpansion time.  If REQUIRES is not given but
+COMPOSED-OF is, COMPOSED-OF is also used as the :requires dependency list."
+  (let ((effective-requires (or requires composed-of)))
+    `(setf (gethash ,name *feature-registry*)
+           (make-feature :name ,name :description ',description
+                          :tags ',tags :provides ',provides
+                          :requires ',effective-requires
+                          :composed-of ',composed-of))))
 
 ;;; ---- Feature lookup ------------------------------------------------------
 
