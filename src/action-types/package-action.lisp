@@ -146,34 +146,6 @@ than asking for it up front."
   "Look up a handler for :via VIA.  Returns the handler or NIL."
   (gethash via *package-via-handlers*))
 
-;;; --- Via resolution (auto-selection) ------------------------------------
-
-(defun via-available-p (via)
-  "Return T if VIA is available on this system.
-:system is always available; everything else is checked through facts
-by the convention that :via :toolbox -> fact :toolbox-p."
-  (if (eq via :system)
-      t
-      (let ((fact-key (intern (concatenate 'string (string via) "-P") :keyword)))
-        (and (fact-known-p fact-key) (fact fact-key)))))
-
-(defun resolve-package-via (action)
-  "Choose a :via method for ACTION (which has no :via) by walking the
-package-preference chain and picking the first available one.  Warns
-and falls back to :system if nothing in the chain is available."
-  (let* ((chain (or (getf action :via-preference)
-                    *package-preference-chain*
-                    '(:system)))
-         (available (loop for via in chain
-                          when (via-available-p via)
-                            collect via)))
-    (if available
-        (first available)
-        (progn
-          (linacs.log:warn* "None of the package vias in ~a are available for ~s; falling back to :system"
-                            chain (action-target action))
-          :system))))
-
 ; --- Dispatch ------------------------------------------------------------
 
 (defun execute-package (action &key mode)

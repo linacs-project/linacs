@@ -7,14 +7,12 @@
 ;;;; single package on every single distro.
 ;;;;
 ;;;; Usage:
-;;;;   Defining a whole catalog (only safe in a project with no other file also
-;;;;   defining :packages, since this replaces it entirely):
+;;;;   Defining many catalog entries at once.  Each entry merges into the
+;;;;   existing catalog, so it is safe to use alongside other catalog files:
 ;;;;
 ;;;;     (define-catalog :packages (:emacs (:fedora . "emacs") (:ubuntu . "emacs-nox")))
 ;;;;
-;;;;   Adding to an existing catalog without touching anything else in it --
-;;;;   the right choice for a feature file meant to be dropped into someone
-;;;;   else's project:
+;;;;   Adding a single entry to an existing catalog programmatically:
 ;;;;
 ;;;;     (register-catalog :packages :git '((:arch . "git")))
 
@@ -25,22 +23,26 @@
  canonical-keyword -> alist of (distro . string).")
 
 (defmacro define-catalog (name &body entries)
-  "Define/replace a catalog. Each entry looks like:
- (:emacs (:fedora . \"emacs\") (:ubuntu . \"emacs-nox\"))"
-  `(let ((table (make-hash-table :test 'eq)))
+  "Define entries in a catalog. Each entry looks like:
+ (:emacs (:fedora . \"emacs\") (:ubuntu . \"emacs-nox\"))
+ Merges into any existing catalog of the same name -- never replaces."
+  `(progn
      ,@(mapcar (lambda (entry)
-                 `(setf (gethash ,(car entry) table) ',(cdr entry)))
-               entries)
-     (setf (gethash ,name *catalogs*) table)))
+                 `(register-catalog ,name ,(car entry) ',(cdr entry)))
+               entries)))
 
 (defun register-catalog (catalog-name canonical-key distro-alist)
   "Programmatically add/merge one entry into a catalog. Used by plugins
-that extend an existing catalog (e.g. linacs-catalog-nix)."
+that extend an existing catalog (e.g. linacs-catalog-nix).  Merges by
+distro: existing entries are updated in place (no duplicates), new
+entries are added.  Idempotent across repeated reloads."
   (let ((table (or (gethash catalog-name *catalogs*)
-                    (setf (gethash catalog-name *catalogs*) (make-hash-table :test 'eq)))))
-    (setf (gethash canonical-key table)
-          (append (gethash canonical-key table) distro-alist))
-))
+                   (setf (gethash catalog-name *catalogs*) (make-hash-table :test 'eq)))))
+    (loop for (distro . name) in distro-alist
+          for existing = (assoc distro (gethash canonical-key table))
+          if existing do (setf (cdr existing) name)
+          else do (push (cons distro name) (gethash canonical-key table)))
+    (gethash canonical-key table)))
 
 (defun catalog-lookup (catalog-name canonical-key distro &key via)
   "Resolve CANONICAL-KEY through CATALOG-NAME for DISTRO and VIA. If VIA is
