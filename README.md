@@ -22,6 +22,8 @@ You write **what**. I know **how**.
 
 ```lisp
 (define-home my-machine
+  :traits (:prune-explicitly-disabled)
+  (package-preference :system :flatpak :toolbox)
   (use-feature :editor :via :emacs)
   (use-feature :security)
   (file "~/.gitconfig" :from "gitconfig.tmpl" :template t))
@@ -204,7 +206,7 @@ You write your own the same way. Drop a `linacs-*` ASDF system in your Quicklisp
 ```
 ├── linacs/                     I am here — the core engine
 │   ├── src/                    Resolution, execution, CLI
-│   │   ├── action-types/       22 built-in executors
+│   │   ├── action-types/       25 built-in executors
 │   │   ├── pipeline.lisp       5-step pipeline
 │   │   ├── cli.lisp            12 CLI commands
 │   │   └── ...
@@ -304,6 +306,45 @@ $ linacs explain -v
 ```
 
 Every action is tagged with its **feature** and **provider** — no mystery about where a package requirement came from. You see the full dependency chain from your home definition all the way down to what's about to change on disk.
+
+---
+
+## Built-in actions
+
+Every action type has a convenience form (usable directly in `define-home`)
+and a raw action plist (usable in providers and `direct-action`).
+
+| DSL form | Action type | What it does |
+|----------|-------------|-------------|
+| `file` | `:copy-file` | Copy a file or rendered template to a target path |
+| `directory` | `:ensure-dir` | Create a directory with specified mode and ownership |
+| `symlink` | `:symlink` | Create or update a symbolic link |
+| `stow` | `:stow` | Symlink an entire directory tree, GNU Stow style |
+| `package` | `:package` | Install or remove a package via any backend |
+| `service` | `:service` | Enable, start, or disable a systemd unit |
+| `timer` | `:timer` | Create and enable a systemd timer unit |
+| `env-var` | `:env-var` | Ensure an `export` line in a profile file |
+| `config-lines` | `:config-lines` | Ensure or remove specific lines in a file |
+| `config-ini` | `:config-ini` | Set or unset keys within an INI section |
+| `config-env` | `:config-env` | Set `KEY=value` pairs in an environment.d file |
+| `secret` | `:secret` | Write a fetched secret value to a file |
+| `user` | `:user` | Create or modify a system user |
+| `group` | `:group` | Create or modify a system group |
+| `authorized-key` | `:authorized-key` | Manage SSH `authorized_keys` entries |
+| `permissions` | `:permissions` | Fix owner, group, or mode on existing paths |
+| `mount` | `:mount` | Manage `/etc/fstab` entries and mount points |
+| `sysctl` | `:sysctl` | Set kernel parameters (live and persistent) |
+| `kernel-module` | `:kernel-module` | Load or unload kernel modules |
+| `hostname` | `:hostname` | Set the system hostname |
+| `locale` | `:locale` | Configure system locale settings |
+| `firewall` | `:firewall` | Manage firewalld zones and rules |
+| `cron` | `:cron` | Manage cron jobs |
+| `command` | `:command` | Run an arbitrary shell command (idempotent via `:creates`) |
+| `clone` | `:clone` | Git clone, pull, or update a repository |
+
+Every executor is idempotent — running it twice produces the same result as
+running it once. See the [user manual](docs/user-manual.md#519-the-built-in-action-types-directly)
+for the full reference with all options and usage variations.
 
 ---
 
