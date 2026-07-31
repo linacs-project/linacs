@@ -661,6 +661,8 @@ extensible and where it's registered:
 | A new `:via` handler for the `:package` action type | `register-package-via-handler` | a plugin, or a project's `providers/*.lisp` |
 | A template renderer | a `RENDER-*` function | a project's `templates/*.lisp` |
 | **A genuinely new action type** (rare — `:command` covers most cases) | `register-action-type` | a plugin, or a change to `src/action-types/` if it belongs in the core |
+| Mark an action type as needing sudo | `register-sudo-requiring-action-type` | a plugin |
+| Exempt a `:package` `:via` from sudo | `register-non-privileged-package-via` | a plugin |
 
 The last two are the extension points that touch me rather than a project.
 A new action type is a function of `(action &key mode)` handling
@@ -677,6 +679,12 @@ handlers (`:flatpak`, `:toolbox`, `:podman`, `:appimage`, `:pip`, `:npm`,
 registered at load time. Look at any file in `src/action-types/` as a
 template for a full action type; `command.lisp` is the simplest complete
 example.
+
+If your new action type's executor calls `sudo` unconditionally, register
+it with `register-sudo-requiring-action-type` so the plan/apply privilege
+notices count it correctly; if a `:via` you add never needs root (say,
+`:pip` for a user-scope install), exempt it with
+`register-non-privileged-package-via`.
 
 ---
 

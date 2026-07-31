@@ -113,9 +113,10 @@
     ;; helpers
     #:read-sudo-password
     #:*sudo-password*
-    #:*sudo-requiring-action-types*
+    #:sudo-n-or-a-prefix
+    #:register-sudo-requiring-action-type
+    #:register-non-privileged-package-via
     #:action-needs-privilege-p
-    #:*non-privileged-package-vias*
     #:preflight-sudo-prompt
     #:shell-ok-p
     #:which

@@ -46,3 +46,35 @@
                 (:action :package :target "emacs" :via :system)))
              nil))
   (is (equal (linacs.core:preflight-notice '()) nil)))
+
+(def-test register-sudo-requiring-action-type-marks-privileged ()
+  "A newly registered action type is counted as sudo-needing by
+action-needs-privilege-p"
+  (let ((linacs.core::*sudo-requiring-action-types* '()))
+    (linacs.core:register-sudo-requiring-action-type :my-priv-type)
+    (is-true (linacs.core:action-needs-privilege-p
+              '(:action :my-priv-type :target "/tmp/x")))))
+
+(def-test register-sudo-requiring-action-type-is-idempotent ()
+  "Registering the same action type twice does not duplicate the entry"
+  (let ((linacs.core::*sudo-requiring-action-types* '()))
+    (linacs.core:register-sudo-requiring-action-type :my-priv-type)
+    (linacs.core:register-sudo-requiring-action-type :my-priv-type)
+    (is (equal linacs.core::*sudo-requiring-action-types* '(:my-priv-type)))))
+
+(def-test register-non-privileged-package-via-exempts-package ()
+  "A registered plist pattern makes matching :package actions report
+NIL from action-needs-privilege-p"
+  (let ((linacs.core::*non-privileged-package-vias* '()))
+    (linacs.core:register-non-privileged-package-via '(:via :pip))
+    (is-false (linacs.core:action-needs-privilege-p
+               '(:action :package :target "black" :via :pip)))
+    (is-true (linacs.core:action-needs-privilege-p
+              '(:action :package :target "emacs" :via :system)))))
+
+(def-test register-non-privileged-package-via-is-idempotent ()
+  "Registering the same pattern twice does not duplicate the entry"
+  (let ((linacs.core::*non-privileged-package-vias* '()))
+    (linacs.core:register-non-privileged-package-via '(:via :pip))
+    (linacs.core:register-non-privileged-package-via '(:via :pip))
+    (is (equal linacs.core::*non-privileged-package-vias* '((:via :pip))))))

@@ -275,7 +275,14 @@ backend-detection probes."
     :hostname :firewall :locale :cron)
   "Action types whose executors unconditionally call RUN-PRIVILEGED.
 Used by ACTION-NEEDS-PRIVILEGE-P to estimate how many actions in a plan
-will need a sudo password.")
+will need a sudo password. Plugins add entries via
+REGISTER-SUDO-REQUIRING-ACTION-TYPE.")
+
+(defun register-sudo-requiring-action-type (type)
+  "Declare that action type TYPE's executor unconditionally calls
+RUN-PRIVILEGED, so ACTION-NEEDS-PRIVILEGE-P counts it as sudo-needing.
+Idempotent: registering the same type twice has no effect."
+  (pushnew type *sudo-requiring-action-types*))
 
 (defvar *non-privileged-package-vias*
   '((:via :flatpak :scope :user))
@@ -287,8 +294,15 @@ property in any one entry matches the action's corresponding property.
 Built-in entries:
   (:via :flatpak :scope :user)   — Flatpak user-scope installs never escalate.
 
-Plugins may push additional entries to declare their own non-privileged
-vias (e.g. (:via :pip), (:via :npm)).")
+Plugins register additional entries via REGISTER-NON-PRIVILEGED-PACKAGE-VIA
+(e.g. (register-non-privileged-package-via '(:via :pip))).")
+
+(defun register-non-privileged-package-via (pattern)
+  "Declare that :package actions matching PATTERN do NOT need privilege
+escalation. PATTERN is a plist of property-value pairs; an action is
+exempt when every property in PATTERN equals the action's corresponding
+property. Idempotent: registering the same pattern twice has no effect."
+  (pushnew pattern *non-privileged-package-vias* :test #'equal))
 
 (defun action-needs-privilege-p (action)
   "T if ACTION is expected to need privilege escalation (sudo).
@@ -297,8 +311,8 @@ and any action type whose executor unconditionally calls RUN-PRIVILEGED."
   (flet ((matches-non-privileged-p (pattern)
            (loop for (prop val) on pattern by #'cddr
                  always (equal (getf action prop) val))))
-    (or (and (eq (action-type action) :package)
-             (not (some #'matches-non-privileged-p *non-privileged-package-vias*)))
+    (if (eq (action-type action) :package)
+        (not (some #'matches-non-privileged-p *non-privileged-package-vias*))
         (member (action-type action) *sudo-requiring-action-types*))))
 
 (defun preflight-sudo-prompt (ordered-actions)
