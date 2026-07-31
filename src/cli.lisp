@@ -293,6 +293,25 @@ and in sudo's own credential cache via sudo -S."
           (error (e) (setf ok nil) (linacs.log:error* "Syntax error in home.lisp: ~a" e)))))
     (if ok (format t "Syntax OK.~%") (uiop:quit 1))))
 
+;;; --- Background thread abstraction (spinner) ----------------------------
+;;;
+;;; Wraps SBCL-specific thread creation behind a pair of helpers so the
+;;; spinner animation works on SBCL and degrades gracefully (no animation)
+;;; on implementations without threading or without the SBCL API.
+
+(defun %make-background-thread (name function)
+  "Create a background thread running FUNCTION. Returns a thread handle
+or NIL. On non-SBCL implementations, FUNCTION is not called and NIL is
+returned — the caller should degrade gracefully."
+  #+sbcl (ignore-errors (sb-thread:make-thread function :name name))
+  #-sbcl (declare (ignore name function)) nil)
+
+(defun %join-thread (thread)
+  "Wait for THREAD to finish. No-op when THREAD is NIL or on
+implementations without threading."
+  #+sbcl (sb-thread:join-thread thread :default nil)
+  #-sbcl (declare (ignore thread)) nil)
+
 ;;; --- Spinner for long-running actions -----------------------------------
 
 (defvar *spinner-chars* "|/-\\"
@@ -306,29 +325,39 @@ and in sudo's own credential cache via sudo -S."
 
 (defun start-spinner (base-line)
   "Start a background thread that displays a rotating spinner on the same
-terminal line as BASE-LINE, updating every 150ms.  Does nothing on
-non-interactive terminals or if thread creation fails."
+terminal line as BASE-LINE, updating every 150ms.  The base-line is printed
+once on the calling thread; the spinner thread only cycles the last character
+using backspace so the line is never fully reprinted (avoids visual artifacts
+on wrapped terminal lines).  Does nothing on non-interactive terminals, on
+implementations without threads, or if thread creation fails."
   (setf *spinner-active* t)
+  ;; Print base-line once on the main thread; cursor stays at end
+  (format t "~a" base-line)
+  (finish-output)
   (setf *spinner-thread*
-        (ignore-errors
-          (sb-thread:make-thread
-           (lambda ()
-             (loop for i from 0
-                   while *spinner-active*
-                   do (format t "~C~a~a" #\Return base-line
-                              (aref *spinner-chars* (mod i 4)))
-                      (finish-output)
-                      (sleep 0.15))
-             ;; Clear the final spinner char with a space
-             (format t "~C~a " #\Return base-line))
-           :name "linacs-spinner"))))
+        (%make-background-thread
+         "linacs-spinner"
+         (lambda ()
+           (loop for i from 0
+                 while *spinner-active*
+                 do (if (zerop i)
+                        ;; First tick: just print the first char
+                        (format t "~a" (aref *spinner-chars* 0))
+                        ;; Subsequent ticks: backspace erases previous char, then print next
+                        (format t "~C~C" #\Backspace (aref *spinner-chars* (mod i 4))))
+                    (finish-output)
+                    (sleep 0.15))
+           ;; Erase the final spinner char so the :after/:failed/:skipped
+           ;; handler can print the result line cleanly.
+           (format t "~C" #\Backspace)
+           (finish-output)))))
 
 (defun stop-spinner ()
   "Stop the spinner thread and wait for it to finish.  Safe to call when
 no spinner is running — returns immediately."
   (when *spinner-thread*
     (setf *spinner-active* nil)
-    (sb-thread:join-thread *spinner-thread* :default nil)
+    (%join-thread *spinner-thread*)
     (setf *spinner-thread* nil)))
 
 ;;; --- Progress reporting ---------------------------------------------------
@@ -360,18 +389,18 @@ On non-interactive terminals (piped output, CI), shows static line labels."
       (:before
        (if tty-p
            (let ((line (format nil "  ~a ~a ~a " glyph type-name target)))
-             (start-spinner line))
-           (format t "  ~a ~a ~a~%" glyph type-name target)))
+              (start-spinner line))
+            (format t "  ~a ~a ~a~%" glyph type-name target)))
       (:after
        (stop-spinner)
        (if tty-p
-           (format t "~C  ~a ~a ~a~%" #\Return glyph type-name target)
+           (format t "~C~C[K  ~a ~a ~a~%" #\Return #\Escape glyph type-name target)
            (format t "  ~a ~a ~a~%" glyph type-name target))
        (finish-output))
       (:failed
        (stop-spinner)
        (if tty-p
-           (format t "~C  ~a ~a ~a~%" #\Return glyph type-name target)
+           (format t "~C~C[K  ~a ~a ~a~%" #\Return #\Escape glyph type-name target)
            (format t "  ~a ~a ~a~%" glyph type-name target))
        (dolist (entry *captured-subprocess-lines*)
          (format t "    ~a~%" (cdr entry)))
@@ -379,7 +408,7 @@ On non-interactive terminals (piped output, CI), shows static line labels."
       (:skipped
        (stop-spinner)
        (if tty-p
-           (format t "~C  ~a ~a ~a~%" #\Return glyph type-name target)
+           (format t "~C~C[K  ~a ~a ~a~%" #\Return #\Escape glyph type-name target)
            (format t "  ~a ~a ~a~%" glyph type-name target))
        (finish-output)))))
 

@@ -57,4 +57,5 @@
        (report :removed :target port)))))
 
 (register-action-type :firewall #'execute-firewall
-  :description "Open/close a port via firewalld or ufw, whichever is installed")
+  :description "Open/close a port via firewalld or ufw, whichever is installed"
+  :identity (lambda (a) (list* :firewall (getf a :protocol "tcp") (action-target a))))

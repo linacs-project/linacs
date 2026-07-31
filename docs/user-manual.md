@@ -665,7 +665,9 @@ extensible and where it's registered:
 The last two are the extension points that touch me rather than a project.
 A new action type is a function of `(action &key mode)` handling
 `:apply`/`:check`/`:remove`, plus one `register-action-type` call with a
-`:description`. A new `:via` handler for `:package` is a function of
+`:description`. If the action's identity is more than `(type . target)`,
+pass an `:identity` function so deduplication and conflict detection use
+it (see §3.5). A new `:via` handler for `:package` is a function of
 `(action name &key mode)` where `name` is already resolved to a string,
 plus one `register-package-via-handler` call — for example, the
 `linacs-fedora` plugin registers an `:rpm-ostree` handler so
@@ -1517,7 +1519,9 @@ extension):
     (case mode
       (:check (list :status :would-change :target (getf action :target)))
       (:apply (list :status :changed :target (getf action :target)))
-      (:remove (list :status :removed :target (getf action :target))))))
+      (:remove (list :status :removed :target (getf action :target))))
+  :description "Does a custom thing"
+  :identity (lambda (action) (cons :my-custom-action (getf action :target))))
 ```
 
 ### 5.20 Generic action properties

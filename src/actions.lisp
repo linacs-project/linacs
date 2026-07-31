@@ -35,6 +35,11 @@ Set during RUN-PIPELINE from the home's (package-preference ...) declaration.")
 `linacs list` and similar reporting. Purely documentation; never consulted
 by resolution or execution.")
 
+(defvar *action-identity-functions* (make-hash-table :test 'eq)
+  "Maps action type keyword -> function of (action) returning identity.
+If no function is registered for a type, the default (cons type target) is used.
+Plugin authors register custom identity functions for new action types.")
+
 (defvar *provenance* (make-hash-table :test 'equal)
   "Maps action identity -> provenance plist (:feature :provider :facts-snapshot
 or :source :location for user-level actions). Populated during pipeline step 2
@@ -61,9 +66,10 @@ Used by `linacs apply` to show live progress glyphs without subprocess noise.")
 when *CAPTURE-SUBPROCESS-OUTPUT* is non-nil.  Reset per-action in
 EXECUTE-ACTION.  Stream-type is :STDOUT or :STDERR.")
 
-(defun register-action-type (type executor-fn &key description)
+(defun register-action-type (type executor-fn &key description identity)
   (setf (gethash type *action-types*) executor-fn)
-  (when description (setf (gethash type *action-type-descriptions*) description)))
+  (when description (setf (gethash type *action-type-descriptions*) description))
+  (when identity (setf (gethash type *action-identity-functions*) identity)))
 
 (defun action-type-description (type)
   (or (gethash type *action-type-descriptions*) ""))
@@ -77,32 +83,19 @@ EXECUTE-ACTION.  Stream-type is :STDOUT or :STDERR.")
 (defun action-target (action) (or (getf action :target) (getf action :to)))
 
 (defun action-identity (action)
-  "Compute the canonical identity for ACTION: a 2-element (type . target)
-cons for most types, or a qualified identity for types whose mechanism or
-content matters beyond the bare target:
-  - :package        (:package via . target) -- :via :system and :via :pip
-                     installs of the same name are different actions.
-  - :config-lines    qualified by its :ensure/:remove content, so multiple
-                     :config-lines actions against the same file are
-                     additive rather than conflicting.
-  - :authorized-key  qualified by the key material, so multiple keys for
-                     the same user don't collide.
-  - :firewall        qualified by :protocol, so the same port number can
-                     have independent tcp and udp rules."
-  (let ((type (action-type action)))
-    (cond
-      ((eq type :package)
-       (list* :package (getf action :via) (getf action :target)))
-      ((eq type :config-lines)
-       (list :config-lines
-             (list (cons :ensure (getf action :ensure))
-                   (cons :remove (getf action :remove)))
-             (action-target action)))
-      ((eq type :authorized-key)
-       (list :authorized-key (action-target action) (getf action :key)))
-      ((eq type :firewall)
-       (list* :firewall (getf action :protocol "tcp") (action-target action)))
-      (t (cons type (action-target action))))))
+  "Compute the canonical identity for ACTION. Delegates to the type's
+registered identity function in *ACTION-IDENTITY-FUNCTIONS* (set via
+REGISTER-ACTION-TYPE :identity), or falls back to (type . target).
+Plugin authors register identity functions for new action types so
+ACTION-IDENTITY never needs a hardcoded cond chain:
+
+    (register-action-type :my-type #'my-executor
+      :identity (lambda (a) (list :my-type (getf a :qualifier) (action-target a))))"
+  (let* ((type (action-type action))
+         (fn (gethash type *action-identity-functions*)))
+    (if fn
+        (funcall fn action)
+        (cons type (action-target action)))))
 
 (defun register-provenance (action-id provenance)
   "Record PROVENANCE plist for ACTION-ID in *PROVENANCE*."

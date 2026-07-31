@@ -66,4 +66,5 @@ regardless of comment changes."
        (report :removed :target path)))))
 
 (register-action-type :authorized-key #'execute-authorized-key
-  :description "Manage one entry in a user's ~/.ssh/authorized_keys")
+  :description "Manage one entry in a user's ~/.ssh/authorized_keys"
+  :identity (lambda (a) (list :authorized-key (action-target a) (getf a :key))))

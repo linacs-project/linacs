@@ -41,4 +41,9 @@
          (report :removed :target target))))))
 
 (register-action-type :config-lines #'execute-config-lines
-  :description "Ensure specific lines are present/absent in a file, leaving the rest untouched")
+  :description "Ensure specific lines are present/absent in a file, leaving the rest untouched"
+  :identity (lambda (a)
+              (list :config-lines
+                    (list (cons :ensure (getf a :ensure))
+                          (cons :remove (getf a :remove)))
+                    (action-target a))))

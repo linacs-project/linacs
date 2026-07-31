@@ -52,14 +52,12 @@ Returns a flat list of provider-tagged action plists."
                                                                  provider-name fname)))))
                                raw-actions)))))))
 
-(defun run-pipeline (&key profile project-root (execute-mode :plan-only) continue-on-error)
-  "Run Execution Model steps 1-5 against the already-discovered home
-definition (i.e. discovery, step 0, must already have run via
-DISCOVER-PLUGINS / DISCOVER-PROJECT). EXECUTE-MODE is :apply, :check, or
-:plan-only (resolve/order but do not call EXECUTE-ACTION at all).
-CONTINUE-ON-ERROR means skip failed actions and their dependents rather
-than aborting the entire run."
-
+(defun resolve-plan (&key profile project-root)
+  "Run Execution Model steps 1-4: probe facts, merge profile, run home
+thunk, resolve features, collect actions, deduplicate, and order.
+Returns (values ordered-actions home-plist).
+Discoverably named so callers that only need resolution (plan, check,
+diff, explain) can skip the execution step entirely."
   (probe-all-facts)
   (apply-profile profile)
   (clrhash *action-results*)
@@ -69,52 +67,70 @@ than aborting the entire run."
           (ignored (register-feature-customs (getf home :use-features)))
          (provider-actions (collect-actions-from-features (getf home :use-features)))
          (user-actions (mapcar (lambda (a)
-                                 (let* ((id (action-identity a))
-                                        (loc (getf a :location))
-                                        (prov (list :source (or (getf a :source) "user")
-                                                    :location loc)))
-                                   (register-provenance id prov)
-                                   (append (copy-list a) (list :project-root project-root))))
-                               (getf home :actions)))
+                                  (let* ((id (action-identity a))
+                                         (loc (getf a :location))
+                                         (prov (list :source (or (getf a :source) "user")
+                                                     :location loc)))
+                                    (register-provenance id prov)
+                                    (append (copy-list a) (list :project-root project-root))))
+                                (getf home :actions)))
          (all-actions (append user-actions provider-actions)))
     (declare (ignore ignored))
     (resolve-package-vias all-actions)
     (run-hooks :after-resolve *facts* all-actions)
+    (let* ((deduped (dedup-actions all-actions))
+           (ordered (order-actions deduped)))
+      (run-hooks :before-execute *facts* ordered)
+      (values ordered home))))
 
-    (let ((deduped (dedup-actions all-actions)))
-      (let ((ordered (order-actions deduped)))
-        (run-hooks :before-execute *facts* ordered)
+(defun execute-plan (ordered home &key (mode :apply) continue-on-error)
+  "Execute an already-resolved action plan (Execution Model step 5).
+MODE is :apply or :check. CONTINUE-ON-ERROR skips failed actions and
+their dependents rather than aborting the entire run.
+Returns ORDERED so callers can inspect *ACTION-RESULTS* afterward."
+  (preflight-notice ordered)
+  (preflight-sudo-prompt ordered)
 
-        (unless (eq execute-mode :plan-only)
-          (preflight-notice ordered)
-          (preflight-sudo-prompt ordered)
+  (let* ((prune (member :prune-explicitly-disabled (getf home :traits)))
+         (failed-ids (make-hash-table :test 'equal)))
+    (dolist (action ordered)
+      (let ((id (action-identity action)))
+        (cond
+          ((and (getf action :disabled) prune)
+           (execute-action action :mode (if (eq mode :apply) :remove :check)))
+          ((getf action :disabled)
+           (when *progress-reporter*
+             (funcall *progress-reporter* action :skipped))
+           nil)
+          ((and continue-on-error
+                (some (lambda (dep) (gethash dep failed-ids))
+                      (getf action :depends-on)))
+           (setf (gethash id *action-results*) (list :status :skipped))
+           (when *progress-reporter*
+             (funcall *progress-reporter* action :skipped))
+           (when (>= linacs.log:*verbosity* 2)
+             (linacs.log:info "Skipping ~a -- depends on prior failure" id)))
+          (t
+           (handler-case
+               (execute-action action :mode mode)
+             (linacs-error (e)
+               (setf (gethash id *action-results*) (list :status :failed :error e))
+               (setf (gethash id failed-ids) t)
+               (if continue-on-error
+                   (linacs.log:warn* "~a failed; continuing" id)
+                   (error e)))))))))
+  ordered)
 
-          (let* ((prune (member :prune-explicitly-disabled (getf home :traits)))
-                 (failed-ids (make-hash-table :test 'equal)))
-            (dolist (action ordered)
-              (let ((id (action-identity action)))
-                (cond
-                  ((and (getf action :disabled) prune)
-                   (execute-action action :mode (if (eq execute-mode :apply) :remove :check)))
-                  ((getf action :disabled)
-                   (when *progress-reporter*
-                     (funcall *progress-reporter* action :skipped))
-                   nil)
-                  ((and continue-on-error
-                        (some (lambda (dep) (gethash dep failed-ids))
-                              (getf action :depends-on)))
-                   (setf (gethash id *action-results*) (list :status :skipped))
-                   (when *progress-reporter*
-                     (funcall *progress-reporter* action :skipped))
-                   (when (>= linacs.log:*verbosity* 2)
-                     (linacs.log:info "Skipping ~a -- depends on prior failure" id)))
-                  (t
-                   (handler-case
-                       (execute-action action :mode execute-mode)
-                     (linacs-error (e)
-                       (setf (gethash id *action-results*) (list :status :failed :error e))
-                       (setf (gethash id failed-ids) t)
-                       (if continue-on-error
-                           (linacs.log:warn* "~a failed; continuing" id)
-                           (error e))))))))))
-        (values ordered home)))))
+(defun run-pipeline (&key profile project-root (execute-mode :plan-only) continue-on-error)
+  "Run Execution Model steps 1-5 against the already-discovered home
+definition (i.e. discovery, step 0, must already have run via
+DISCOVER-PLUGINS / DISCOVER-PROJECT). Composes RESOLVE-PLAN and
+EXECUTE-PLAN. EXECUTE-MODE is :apply, :check, or :plan-only
+(resolve/order but do not call EXECUTE-ACTION at all).
+CONTINUE-ON-ERROR means skip failed actions and their dependents rather
+than aborting the entire run."
+  (multiple-value-bind (ordered home)
+      (resolve-plan :profile profile :project-root project-root)
+    (unless (eq execute-mode :plan-only)
+      (execute-plan ordered home :mode execute-mode :continue-on-error continue-on-error))
+    (values ordered home)))

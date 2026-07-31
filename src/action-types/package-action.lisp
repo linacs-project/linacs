@@ -345,4 +345,5 @@ expected to be provided by an external plugin."
     (funcall handler action name :mode mode)))
 
 (register-action-type :package #'execute-package
-                      :description "Install a package via the system package manager, pip, npm, Flatpak, toolbox, podman, or AppImage")
+  :description "Install a package via the system package manager, pip, npm, Flatpak, toolbox, podman, or AppImage"
+  :identity (lambda (a) (list* :package (getf a :via) (getf a :target))))

@@ -78,6 +78,7 @@
    #:action-target
    #:action-plist
    #:action-identity
+   #:*action-identity-functions*
    #:register-action-type
    #:find-executor
    #:execute-action
@@ -96,6 +97,8 @@
 
    ;; pipeline
    #:register-pipeline-hook
+   #:resolve-plan
+   #:execute-plan
    #:run-pipeline
    #:*pipeline-hooks*
 
