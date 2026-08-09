@@ -40,6 +40,13 @@ by resolution or execution.")
 If no function is registered for a type, the default (cons type target) is used.
 Plugin authors register custom identity functions for new action types.")
 
+(defvar *action-type-dedup-behavior* (make-hash-table :test 'eq)
+  "Maps action type keyword -> dedup behavior, :conflict (default) or :additive.
+:additive types (e.g. :config-lines) keep both same-identity actions at the
+same priority, warning instead of signaling ACTION-CONFLICT. Plugin authors
+declare the behavior for new action types via the :dedup-behavior keyword on
+REGISTER-ACTION-TYPE.")
+
 (defvar *provenance* (make-hash-table :test 'equal)
   "Maps action identity -> provenance plist (:feature :provider :facts-snapshot
 or :source :location for user-level actions). Populated during pipeline step 2
@@ -66,10 +73,11 @@ Used by `linacs apply` to show live progress glyphs without subprocess noise.")
 when *CAPTURE-SUBPROCESS-OUTPUT* is non-nil.  Reset per-action in
 EXECUTE-ACTION.  Stream-type is :STDOUT or :STDERR.")
 
-(defun register-action-type (type executor-fn &key description identity)
+(defun register-action-type (type executor-fn &key description identity dedup-behavior)
   (setf (gethash type *action-types*) executor-fn)
   (when description (setf (gethash type *action-type-descriptions*) description))
-  (when identity (setf (gethash type *action-identity-functions*) identity)))
+  (when identity (setf (gethash type *action-identity-functions*) identity))
+  (when dedup-behavior (setf (gethash type *action-type-dedup-behavior*) dedup-behavior)))
 
 (defun action-type-description (type)
   (or (gethash type *action-type-descriptions*) ""))
@@ -166,9 +174,12 @@ to the same cons cells (e.g. the ordered action list in CMD-PLAN)."
   "Deduplicate ACTIONS by identity. :priority :user (highest) beats
 :priority :provider. :force t wins any tie regardless of priority. Two
 actions of the same priority with the same identity but different content
-signal ACTION-CONFLICT. For :config-lines, duplicates at the same priority
-only warn and both survive (they're additive by identity construction, so
-true duplicates here mean literally identical ensure/remove sets)."
+signal ACTION-CONFLICT. For types registered with :dedup-behavior :additive
+(e.g. :config-lines), same-identity duplicates at the same priority only
+warn and both survive -- they're additive by identity construction, so
+true duplicates there mean literally identical content. Priority still
+outranks :additive: a user-level definition beats a provider-level one
+even for additive types."
   (let ((by-identity (make-hash-table :test 'equal))
         (result '()))
     (dolist (action actions)
@@ -185,9 +196,6 @@ true duplicates here mean literally identical ensure/remove sets)."
            nil) ; existing already forced; keep it, drop new
           ((same-action-content-p action existing)
            nil) ; identical, drop the duplicate silently
-          ((eq (action-type action) :config-lines)
-           (linacs.log:warn* "Duplicate :config-lines identity for ~a; keeping first, continuing."
-                             (action-target action)))
           (t
            (let ((pa (or (getf action :priority) :provider))
                  (pe (or (getf existing :priority) :provider)))
@@ -197,6 +205,10 @@ true duplicates here mean literally identical ensure/remove sets)."
                 (setf (gethash id by-identity) action))
                ((and (eq pa :provider) (eq pe :user))
                 nil) ; existing user-level def wins, drop provider action
+               ((eq (gethash (action-type action) *action-type-dedup-behavior*) :additive)
+                (linacs.log:warn* "Duplicate ~a identity for ~a; keeping both, continuing."
+                                  (action-type action) (action-target action))
+                (push action result))
                (t
                 (restart-case
                     (error 'action-conflict :identity id
@@ -204,9 +216,9 @@ true duplicates here mean literally identical ensure/remove sets)."
                            :def-b (action-source-label action))
                   (use-first () :report "Keep definition A (the existing action)"
                              nil) ; existing is already in result/by-identity; nothing to do
-                  (use-second () :report "Keep definition B (the new action)"
-                              (setf result (substitute action existing result))
-                              (setf (gethash id by-identity) action))))))))))
+                   (use-second () :report "Keep definition B (the new action)"
+                               (setf result (substitute action existing result))
+                               (setf (gethash id by-identity) action))))))))))
     (nreverse result)))
 
 (defun order-actions (actions)

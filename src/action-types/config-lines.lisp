@@ -42,6 +42,7 @@
 
 (register-action-type :config-lines #'execute-config-lines
   :description "Ensure specific lines are present/absent in a file, leaving the rest untouched"
+  :dedup-behavior :additive
   :identity (lambda (a)
               (list :config-lines
                     (list (cons :ensure (getf a :ensure))
