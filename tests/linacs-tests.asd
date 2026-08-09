@@ -26,7 +26,8 @@
                :serial t
                :components
                ((:file "execution")
-                (:file "disabled-actions")))
+                (:file "disabled-actions")
+                (:file "hooks")))
       (:module "cli"
                :serial t
                :components

@@ -5,6 +5,8 @@
   (:import-from #:linacs.core
    #:file
    #:run-pipeline
+   #:register-pipeline-hook
+   #:*pipeline-hooks*
    #:*current-home-thunk*
    #:*current-home-name*
    #:*current-home-traits*

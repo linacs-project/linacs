@@ -18,8 +18,14 @@
 functions, run in registration order.")
 
 (defun register-pipeline-hook (point hook-fn)
-  (setf (gethash point *pipeline-hooks*)
-        (append (gethash point *pipeline-hooks*) (list hook-fn))))
+  "Register HOOK-FN at hook point POINT. Duplicate registrations of the
+same function object are ignored (EQ identity), so re-running discovery
+or calling MAIN more than once in a long-lived Lisp image cannot
+accumulate duplicate hooks. Returns HOOK-FN."
+  (let ((hooks (gethash point *pipeline-hooks*)))
+    (unless (member hook-fn hooks :test #'eq)
+      (setf (gethash point *pipeline-hooks*) (append hooks (list hook-fn))))
+    hook-fn))
 
 (defun run-hooks (point &rest args)
   (dolist (hook (gethash point *pipeline-hooks*))

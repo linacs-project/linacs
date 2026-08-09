@@ -67,12 +67,12 @@ command's help instead of guessing what the person meant."
 
 (defun reset-project-registries ()
   "Clear every registry that Discovery (re-)populates from scratch on each
-invocation. Without this, calling MAIN more than once in a long-lived Lisp
-image (a REPL, a saved image used interactively) would silently accumulate
-duplicate pipeline hooks -- register-pipeline-hook has no identity to
-de-duplicate by, unlike DEFINE-FEATURE/REGISTER-PROVIDER/DEFINE-CATALOG,
-which already overwrite cleanly by name. A fresh per-invocation process
-never notices this; a persistent one does."
+invocation. REGISTER-PIPELINE-HOOK already de-duplicates by function
+identity, so clearing *PIPELINE-HOOKS* here is the explicit per-invocation
+reset (to drop hooks registered outside the discovery flow), not a
+workaround for accumulation. DEFINE-FEATURE/REGISTER-PROVIDER/
+DEFINE-CATALOG overwrite cleanly by name. A fresh per-invocation process
+never notices any of this; a persistent one does."
   (clrhash *fact-probers*)
   (clrhash *fact-metadata*)
   (clrhash *feature-registry*)
