@@ -8,7 +8,7 @@
 ;;;;
 ;;;; Usage:
 ;;;;   Executing one action directly (mainly useful for debugging or testing an
-;;;;   executor in isolation -- see docs/how-to-debug.md):
+;;;;   executor in isolation -- see tests/ and docs/user-manual.md §4.4):
 ;;;;
 ;;;;     (execute-action '(:action :copy-file :target "/tmp/x" :from "x") :mode :check)
 

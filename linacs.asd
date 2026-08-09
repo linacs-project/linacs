@@ -12,7 +12,7 @@
 ;;;;     (asdf:load-system :linacs)
 ;;;;
 ;;;;   Force a full rebuild after pulling changes or editing files outside
-;;;;   the running image (see docs/04-reference.md §26):
+;;;;   the running image (see docs/user-manual.md §5.27):
 ;;;;
 ;;;;     (asdf:load-system :linacs :force t)
 

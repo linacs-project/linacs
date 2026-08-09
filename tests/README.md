@@ -9,29 +9,45 @@ tests/
 ├── linacs-tests.asd          # ASDF system definition for tests
 ├── package.lisp              # Test package definition
 ├── helpers.lisp              # Test utilities and fixtures
-├── run.lisp                  # Test runner
-└── modules/
-    ├── actions/              # Action identity, deduplication, ordering tests
-    ├── dsl/                  # DSL macro tests and validation
-    ├── features/             # Feature graph resolution tests
-    ├── pipeline/             # Pipeline execution tests
-    └── executors/            # Action executor tests
-        ├── copy-file.lisp
-        ├── ensure-dir.lisp
-        ├── symlink.lisp
-        ├── service.lisp
-        ├── config-lines.lisp
-        └── package-action.lisp
+├── Makefile                  # Makefile-based runner (see below)
+├── setup.sh                  # Sets up a local SBCL/Quicklisp test env
+├── actions/                  # Action identity, deduplication, ordering tests
+├── api/                      # :linacs.api public-surface tests
+├── cli/                      # CLI flag-parsing tests
+├── dsl/                      # DSL macro tests and validation
+├── executors/                # Action executor tests
+├── facts/                    # Fact schema tests
+├── features/                 # Feature graph resolution tests
+├── pipeline/                 # Pipeline execution tests
+├── privilege/                # Sudo/privilege handling tests
+└── profiles/                 # Profile metadata tests
 ```
 
+The canonical entry point is `run-all-tests.lisp` at the linacs project
+root, which loads the whole suite (including `tests/api/surface.lisp`,
+which is exercised there even though `linacs-tests.asd` does not list it)
+and prints a pass/fail summary.
+
 ## Running Tests
+
+### Canonical: `run-all-tests.lisp` (from the linacs root)
+
+```bash
+cd linacs
+sbcl --load run-all-tests.lisp
+```
+
+This loads LINACS, every test module, and runs the whole suite, printing a
+pass/fail summary. It is the single source of truth for what gets tested.
 
 ### Using ASDF
 
 From a Lisp REPL:
 
 ```lisp
-;; Add the tests directory to the ASDF registry
+;; Add both the linacs root and the tests dir to the ASDF registry
+;; (linacs-tests.asd lives under tests/ and depends on "linacs")
+(push #P"/path/to/linacs-project/linacs/" asdf:*central-registry*)
 (push #P"/path/to/linacs-project/linacs/tests/" asdf:*central-registry*)
 
 ;; Load the test system
@@ -39,25 +55,18 @@ From a Lisp REPL:
 
 ;; Run all tests
 (fiveam:run-all-tests :linacs-tests)
-
-;; Or run from the test directory
-(fiveam:run-all-tests :linacs-tests)
 ```
 
-### Using sbcl
-
-```bash
-# Build the test system
-cd /path/to/linacs-project
-sbcl --eval "(asdf:load-system :linacs-tests)" \
-     --eval "(flet ((run () (fiveam:run-all-tests :linacs-tests))) (run) (exit))" \
-     --quit
-```
+Note: `linacs-tests.asd` covers the `actions/`, `dsl/`, `features/`,
+`pipeline/`, `cli/`, `facts/`, `privilege/`, `profiles/`, and `executors/`
+modules. `tests/api/surface.lisp` is exercised only via `run-all-tests.lisp`
+(see the note in Structure).
 
 ### Using Roswell
 
 ```bash
-ros run -s linacs-tests
+cd linacs
+ros run --load run-all-tests.lisp
 ```
 
 ## Test Organization
@@ -80,6 +89,30 @@ ros run -s linacs-tests
 ### Pipeline Tests
 
 - **execution.lisp**: Tests pipeline execution flow
+- **disabled-actions.lisp**: Tests how `:disabled t` actions are handled
+  under the `:prune-explicitly-disabled` trait
+- **hooks.lisp**: Tests `register-pipeline-hook` behavior
+
+### CLI Tests
+
+- **flag-parsing.lisp**: Tests `parse-args` / CLI flag handling
+
+### Facts Tests
+
+- **schema.lisp**: Tests fact probing and type validation
+
+### Privilege Tests
+
+- **basics.lisp**: Tests sudo/privilege detection and escalation logic
+
+### Profiles Tests
+
+- **metadata.lisp**: Tests profile definition, application, and metadata
+
+### API Tests
+
+- **surface.lisp**: Tests the `:linacs.api` public package surface (what
+  is exported, and that a `(:use :cl :linacs.api)` consumer sees it)
 
 ### Executors Tests
 
@@ -142,8 +175,7 @@ Example GitHub Actions workflow:
 - name: Run LINACS Tests
   run: |
     cd linacs
-    sbcl --eval "(asdf:load-system :linacs-tests)" \
-         --eval "(progn (fiveam:run-all-tests :linacs-tests) (uiop:quit))"
+    sbcl --load run-all-tests.lisp
 ```
 
 ## Expected Coverage

@@ -95,25 +95,32 @@ Every action is idempotent by construction. The package executor checks before i
 
 You will add new applications to your home faster than I can ship providers for them. That is fine. I am built for this.
 
-Drop any directory under `files/` in your home project, and I stow it onto your home directory with symlinks:
+Drop any directory under `files/` in your home project and stow it onto your home directory with one line:
+
+```lisp
+(define-home my-home
+  (stow "dotfiles")            ;; files/dotfiles/** -> ~/**, symlinked
+  (stow ".config" :to "~"))    ;; files/.config/** -> ~/.config/**, symlinked
+```
+
+`files/` holds one directory per "package", mirroring where it should land under `~`:
 
 ```
 my-home/
-├── home.lisp
+├── home.lisp                  # says (stow "dotfiles")
 └── files/
-    ├── .config/          # Stows to ~/.config/
-    │   ├── fish/
-    │   └── sway/
-    ├── .gitconfig.tmpl   # Stows to ~/.gitconfig
-    └── scripts/           # Stows to ~/scripts/
+    ├── dotfiles/              # Stows to ~/
+    │   ├── .gitconfig         #   -> ~/.gitconfig
+    │   └── .config/
+    │       ├── fish/
+    │       └── sway/
+    └── scripts/               # Another package -> ~/scripts/
         └── my-thing.sh
 ```
 
-`files/` mirrors your home directory. Every file or directory in `files/` is symlinked into place by me. You version-control the whole thing. You edit in place — it's already symlinked back to your repo.
+Nothing in `files/` is touched until you say `(stow "pkg")` — that's what makes the mapping explicit and predictable. The `:stow` executor mirrors each package tree onto the target root (default `~`), folding whole directories into a single symlink when nothing exists there yet and recursing to merge file-by-file when the target directory already exists — the same folding/unfolding/conflict rules as GNU Stow, natively in Lisp, no external binary required. Plugins use it too: the security plugin stows `files/gpg/` onto `~/.gnupg/` and `files/firewalld/` onto `/etc/firewalld/`.
 
-This is not an afterthought. Stow is a first-class action type (`:stow`) with its own executor — it handles folding, unfolding, and conflict resolution the same way GNU Stow does, natively in Lisp, no external binary required. Plugins use it too: the security plugin stows `files/gpg/` onto `~/.gnupg/` and `files/firewalld/` onto `/etc/firewalld/`.
-
-**Most of your dotfile management will be stow.** Features and providers are for the things that need logic (package installation, service enablement, config generation). Everything else is a file in `files/`.
+**Most of your dotfile management will be stow.** Features and providers are for the things that need logic (package installation, service enablement, config generation). Everything else is a file under `files/` plus a one-line `(stow ...)`.
 
 ---
 
@@ -390,7 +397,7 @@ touch my-home/providers/my-cool-thing.lisp
 ```
 
 ```lisp
-(in-package :linacs.core)
+(in-package :linacs.api)
 (define-provider :my-cool-thing :for :editor
   (lambda (facts)
     (list (list :action :package :target :my-cool-thing :via :system))))

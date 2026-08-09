@@ -16,7 +16,7 @@
 ;;;;   and caught either by the CLI (src/cli.lisp's WITH-CLI-ERROR-REPORT, which
 ;;;;   prints a one-line message and exits) or, when driving LINACS from a live
 ;;;;   REPL, by an interactive debugger showing the real restarts -- see
-;;;;   docs/how-to-debug.md.
+;;;;   docs/user-manual.md §4.4.
 
 (in-package :linacs.core)
 

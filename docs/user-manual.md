@@ -660,9 +660,9 @@ provides — two different things, on purpose.
 ### 4.6 Extension points, summarized
 
 If you're writing a feature for a project (not modifying me), you almost
-certainly want `docs/how-to-feature.md` instead of this section — it's a
-complete, example-driven guide. This is just the map of what's
-extensible and where it's registered:
+certainly want §5.17 (Features) and §5.18 (Providers) instead of this
+section — they're the complete, example-driven reference. This is just the
+map of what's extensible and where it's registered:
 
 | To add | Call | Where it typically lives |
 |---|---|---|
@@ -790,6 +790,15 @@ doesn't have its own conditional form):
 (unless (fact :work-p)
   (use-feature :gaming)
   (use-feature :media))
+```
+
+**Passing configuration to the provider** (the provider reads it back with
+`feature-custom` — see §5.18):
+
+```lisp
+(use-feature :editor :via :emacs
+  :custom (:url "https://github.com/someone/doom-emacs.git"
+           :target "~/.config/emacs"))
 ```
 
 ### 5.3 `file`
@@ -1462,18 +1471,18 @@ tests) can call it directly with a fixture fact plist and assert on the
 list it returns — no special test mode needed for providers, unlike
 executors.
 
-**Passing configuration** to use-feature provider creates re-useable
+**Passing configuration** to a `use-feature` provider creates re-useable
 features that can easily be copied by others, and customised without
-needing to update the provider.
+needing to update the provider:
 
 ```lisp
 (use-feature :editor
   :via :emacs
-  :config (:url "https://github.com/someone/doom-emacs.git"
-           :target "~/.config/emacs")))
+  :custom (:url "https://github.com/someone/doom-emacs.git"
+           :target "~/.config/emacs"))
 ```
 
-The variables are accesible withing the provider as follows:
+The values are accessible within the provider as follows:
 
 ```lisp
 (define-provider :emacs
@@ -1481,19 +1490,21 @@ The variables are accesible withing the provider as follows:
   :description "GNU Emacs"
   (lambda (facts)
     (declare (ignore facts))
-    (let* (;; ── Configuration source (from :config or sensible defaults) ──
-           (config-url       (or (feature-config :editor :url)
-                                 "https://github.com/doom/doom-emacs.git"))
-           (config-target    (or (feature-config :editor :target)
-                                 "~/.emacs.d")))
-      (append
-       (list
-        (list :action :package :target package-key :via :system)
-        '(:action :package :target :git :via :system)
-        (list :action :clone :target config-target :url config-url))
-
-       (editor-environment-actions editor-cmd visual-cmd pager-cmd sudo-editor-cmd)))))
+    (let* (;; ── Configuration source (from :custom or sensible defaults) ──
+           (config-url    (or (feature-custom :editor :url)
+                              "https://github.com/doom/doom-emacs.git"))
+           (config-target (or (feature-custom :editor :target)
+                              "~/.emacs.d")))
+      (list
+       (list :action :package :target :emacs :via :system)
+       '(:action :package :target :git :via :system)
+       (list :action :clone :target config-target :url config-url)))))
 ```
+
+`feature-custom` takes the feature name and an optional key: without a key it
+returns the whole custom plist, with a key it returns that one value (or
+`nil` if absent). Any key you put in `:custom` at the use-site — and only
+those keys — is available to the provider.
 
 ### 5.19 The built-in Action types, directly
 
