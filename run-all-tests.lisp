@@ -72,6 +72,10 @@
 (load "tests/cli/flag-parsing.lisp")
 (format t "CLI flag parsing tests loaded~%")
 
+(format t "Loading API surface tests...~%")
+(load "tests/api/surface.lisp")
+(format t "API surface tests loaded~%")
+
 (format t "~%Loading main test file...~%")
 (load "tests/actions/identity.lisp")
 (format t "Main test file loaded~%")

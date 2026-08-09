@@ -38,16 +38,27 @@
 
 ;;; ---- Feature definition -------------------------------------------------
 
+(defun register-feature (name &key description tags provides requires composed-of)
+  "Programmatically register (or replace) a FEATURE struct under NAME.
+All keyword arguments are the same as DEFINE-FEATURE's. Exists so the
+registration surface is consistent (every extension point has a
+REGISTER-* function); DEFINE-FEATURE is a thin macro over this."
+  (setf (gethash name *feature-registry*)
+        (make-feature :name name :description description
+                      :tags tags :provides provides
+                      :requires (or requires composed-of)
+                      :composed-of composed-of)))
+
 (defmacro define-feature (name &key description tags provides requires composed-of)
   "All of DESCRIPTION, TAGS, PROVIDES, REQUIRES, and COMPOSED-OF are taken
 as literal data at macroexpansion time.  If REQUIRES is not given but
 COMPOSED-OF is, COMPOSED-OF is also used as the :requires dependency list."
-  (let ((effective-requires (or requires composed-of)))
-    `(setf (gethash ,name *feature-registry*)
-           (make-feature :name ,name :description ',description
-                          :tags ',tags :provides ',provides
-                          :requires ',effective-requires
-                          :composed-of ',composed-of))))
+  `(register-feature ,name
+                     :description ',description
+                     :tags ',tags
+                     :provides ',provides
+                     :requires ',requires
+                     :composed-of ',composed-of))
 
 ;;; ---- Feature lookup ------------------------------------------------------
 

@@ -124,7 +124,7 @@ Say you want me to manage your shell. First, tell me it's a *capability*
 that exists, in `features/shell.lisp`:
 
 ```lisp
-(in-package :linacs.core)
+(in-package :linacs.api)
 
 (define-feature :shell
   :description "Login shell and dotfiles"
@@ -136,7 +136,7 @@ same file — I don't care which of the six directories a registration form
 lives in, as long as it's one of them):
 
 ```lisp
-(in-package :linacs.core)
+(in-package :linacs.api)
 
 (define-provider :bash :for :shell
   (lambda (facts)
@@ -157,7 +157,7 @@ name. Some distros call it something else. Tell me the mapping in
 `catalogs/packages.lisp`:
 
 ```lisp
-(in-package :linacs.core)
+(in-package :linacs.api)
 
 (define-catalog :packages
   (:bash (:fedora . "bash") (:ubuntu . "bash") (:arch . "bash")))
@@ -565,14 +565,26 @@ single file, faster than reading this section again.
 
 ### 4.2 The package split
 
-Three packages, one job each:
+Four packages, one job each:
 
-- **`:linacs.core`** — everything: the DSL, the pipeline, every built-in
-  action executor, the CLI. This is where you'll spend nearly all your
-  time if you're extending me.
+- **`:linacs.core`** — the engine: the DSL implementation, the pipeline,
+  every built-in action executor, the CLI. This is where you'll spend
+  nearly all your time if you're extending *me*.
+- **`:linacs.api`** — the stable public API package: a sealed facade over
+  `:linacs.core` that re-exports the curated surface (DSL macros,
+  registration forms, authoring helpers, conditions/restarts, logging).
+  This is what **home projects and plugins** read: a project file starts
+  with `(in-package :linacs.api)`, and a plugin declares
+  `(:use :cl :linacs.api)`. It deliberately does **not** export the two
+  DSL macros that shadow CL names (`package`, `directory`) — they are
+  only *shadowing-imported* into `:linacs.api`, so a plugin's
+  `(:use :cl :linacs.api)` inherits them without ever colliding with
+  `cl:package`/`cl:directory`. (A home project that reads in
+  `:linacs.api` still sees both macros unqualified, exactly as before.)
 - **`:linacs.log`** — a small leveled-logging facility (`info`, `debug*`,
   `warn*`, `error*`), kept separate so providers and executors can log
-  without depending on the rest of the core.
+  without depending on the rest of the core. `:linacs.api` re-exports its
+  symbols, so plugin code never needs a separate import.
 - **`:linacs-templates`** — deliberately empty by default. A home project's
   own `templates/*.lisp` files add `RENDER-*` functions here; I never
   define anything in it myself.
@@ -582,7 +594,8 @@ Two symbols are worth knowing about early: `:linacs.core` shadows
 `package` and `directory` as macro names. If you're working inside
 `:linacs.core` and reach for the standard Lisp functions of those names,
 you'll get my macros instead — use `cl:directory`/`cl:package` explicitly
-if you ever need the originals.
+if you ever need the originals. The same is true inside `:linacs.api` for
+the same two names (accessible but not exported).
 
 ### 4.3 The registries
 
@@ -653,8 +666,8 @@ extensible and where it's registered:
 
 | To add | Call | Where it typically lives |
 |---|---|---|
-| A capability | `define-feature` | a project's `features/*.lisp` |
-| An implementation of a capability | `define-provider` | a project's `providers/*.lisp` |
+| A capability | `define-feature` / `register-feature` | a project's `features/*.lisp` |
+| An implementation of a capability | `define-provider` / `register-provider` | a project's `providers/*.lisp` |
 | A distro package-name mapping | `register-catalog` | a project's `catalogs/*.lisp` |
 | A new probed fact | `register-fact-prober` | a project's `providers/*.lisp` |
 | Cross-cutting behavior (audit logging, a confirmation prompt) | `register-pipeline-hook` | a project's `hooks/*.lisp` |
@@ -663,6 +676,16 @@ extensible and where it's registered:
 | **A genuinely new action type** (rare — `:command` covers most cases) | `register-action-type` | a plugin, or a change to `src/action-types/` if it belongs in the core |
 | Mark an action type as needing sudo | `register-sudo-requiring-action-type` | a plugin |
 | Exempt a `:package` `:via` from sudo | `register-non-privileged-package-via` | a plugin |
+
+The `define-feature`/`define-provider` forms are thin macros over the
+`register-feature`/`register-provider` functions; the functions exist so
+programmatic and plugin-driven registration uses the same naming
+convention as every other extension point.
+
+Whether you're writing a project file or a plugin, read your code in
+`:linacs.api`, never `:linacs.core` (see §4.2). A project file starts
+with `(in-package :linacs.api)`; a plugin's `defpackage` uses
+`(:use :cl :linacs.api)`.
 
 The last two are the extension points that touch me rather than a project.
 A new action type is a function of `(action &key mode)` handling

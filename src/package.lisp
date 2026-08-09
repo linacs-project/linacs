@@ -62,8 +62,10 @@
 
     ;; features / providers
      #:define-feature
+     #:register-feature
      #:*feature-registry*
      #:define-provider
+     #:register-provider
      #:feature-custom
      #:register-feature-customs
      #:clear-feature-customs
@@ -76,6 +78,7 @@
    #:make-action
    #:action-type
    #:action-target
+   #:action-source-label
    #:action-plist
    #:action-identity
    #:*action-identity-functions*
@@ -114,6 +117,7 @@
     #:read-sudo-password
     #:*sudo-password*
     #:sudo-n-or-a-prefix
+    #:expand-home
     #:register-sudo-requiring-action-type
     #:register-non-privileged-package-via
     #:action-needs-privilege-p
@@ -129,6 +133,7 @@
    ;; dsl
    #:define-home
    #:use-feature
+   #:define-action-macro
    #:file
    #:directory
    #:symlink
@@ -175,6 +180,70 @@
    #:cli-opts-sudo-password-stdin
    #:cli-opts-sudo-reset
    #:cli-opts-help))
+
+(defpackage :linacs.api
+  (:use :cl)
+  (:shadowing-import-from :linacs.core
+    ;; The two DSL macros that collide with CL. Kept ACCESSIBLE here (so a
+    ;; home.lisp `(in-package :linacs.api)` sees them unqualified) but
+    ;; deliberately NOT exported -- an exported PACKAGE/DIRECTORY would
+    ;; make every plugin's (:use :cl :linacs.api) signal a name conflict.
+    #:package
+    #:directory)
+  (:import-from :linacs.core
+    ;; DSL
+    #:define-home #:define-profile #:use-feature #:package-preference
+    #:direct-action #:define-action-macro #:*current-home-actions*
+    #:file #:symlink #:secret #:env-var #:config-lines #:config-ini #:config-env
+    #:user #:group #:authorized-key #:permissions #:mount #:sysctl
+    #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow
+    ;; registration
+    #:define-feature #:register-feature #:define-provider #:register-provider
+    #:define-catalog #:register-catalog #:register-fact-prober
+    #:register-action-type #:register-package-via-handler #:register-pipeline-hook
+    #:register-sudo-requiring-action-type #:register-non-privileged-package-via
+    ;; authoring helpers
+    #:fact #:fact* #:fact-known-p #:feature-custom #:catalog-lookup
+    #:action-type #:action-target #:action-source-label #:action-identity
+    #:report #:which #:shell-ok-p #:run-privileged #:expand-home
+    ;; conditions
+    #:linacs-error #:missing-provider #:action-conflict #:execution-failure
+    #:insufficient-privileges #:permission-denied-mid-run #:non-interactive-prompt
+    #:fact-prober-conflict #:missing-template-renderer #:file-discovery-load-error
+    #:pipeline-aborted-by-hook #:dependency-cycle
+    ;; restarts
+    #:retry #:skip #:abort-processing #:use-first #:use-second #:specify-provider
+    #:skip-feature #:retry-with-sudo #:supply-value #:specify-renderer
+    #:treat-as-static)
+  (:import-from :linacs.log
+    #:info #:debug* #:warn* #:error* #:set-verbosity #:*verbosity*)
+  (:export
+    ;; DSL
+    #:define-home #:define-profile #:use-feature #:package-preference
+    #:direct-action #:define-action-macro #:*current-home-actions*
+    #:file #:symlink #:secret #:env-var #:config-lines #:config-ini #:config-env
+    #:user #:group #:authorized-key #:permissions #:mount #:sysctl
+    #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow
+    ;; registration
+    #:define-feature #:register-feature #:define-provider #:register-provider
+    #:define-catalog #:register-catalog #:register-fact-prober
+    #:register-action-type #:register-package-via-handler #:register-pipeline-hook
+    #:register-sudo-requiring-action-type #:register-non-privileged-package-via
+    ;; authoring helpers
+    #:fact #:fact* #:fact-known-p #:feature-custom #:catalog-lookup
+    #:action-type #:action-target #:action-source-label #:action-identity
+    #:report #:which #:shell-ok-p #:run-privileged #:expand-home
+    ;; conditions
+    #:linacs-error #:missing-provider #:action-conflict #:execution-failure
+    #:insufficient-privileges #:permission-denied-mid-run #:non-interactive-prompt
+    #:fact-prober-conflict #:missing-template-renderer #:file-discovery-load-error
+    #:pipeline-aborted-by-hook #:dependency-cycle
+    ;; restarts
+    #:retry #:skip #:abort-processing #:use-first #:use-second #:specify-provider
+    #:skip-feature #:retry-with-sudo #:supply-value #:specify-renderer
+    #:treat-as-static
+    ;; logging (re-exported so plugin authors need no separate :linacs.log import)
+    #:info #:debug* #:warn* #:error* #:set-verbosity #:*verbosity*))
 
 (defpackage :linacs-templates
   (:use :cl)

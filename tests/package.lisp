@@ -20,3 +20,10 @@
    #:run
    #:run!
    #:run-all-tests))
+
+;; A (:use :cl :linacs.api) consumer package -- the exact usage pattern of
+;; a third-party plugin. Exercised by tests/api/surface.lisp. Defined here
+;; (rather than in the test file) so the whole run has a stable package.
+(defpackage #:linacs.api-consumer-test
+  (:use #:common-lisp #:linacs.api)
+  (:export #:api-exports-resolve #:consumer-package-finds-everything))

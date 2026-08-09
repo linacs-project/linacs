@@ -18,7 +18,12 @@
   "Maps feature name -> list of (provider-name provider-function default-p
 description), one entry per registered provider for that feature.")
 
-(defun %define-provider (provider-name feature-name fn &key default description)
+(defun register-provider (provider-name feature-name fn &key default description)
+  "Programmatically register PROVIDER-NAME as an implementation of
+FEATURE-NAME. Replaces any existing provider of the same name for that
+feature. Exists so the registration surface is consistent (every
+extension point has a REGISTER-* function); DEFINE-PROVIDER is a thin
+macro over this."
   (let ((alist (remove provider-name (gethash feature-name *providers*) :key #'first)))
     (push (list provider-name fn default description) alist)
     (setf (gethash feature-name *providers*) alist)))
@@ -39,8 +44,8 @@ purely documentation, shown by `linacs list` and similar reporting."
            (opts (butlast tail))
            (default (getf opts :default))
            (description (getf opts :description)))
-      `(%define-provider ,provider-name ,feature-name ,fn-form
-                            :default ,default :description ,description))))
+      `(register-provider ,provider-name ,feature-name ,fn-form
+                          :default ,default :description ,description))))
 
 (defun find-providers-for (feature-name)
   (gethash feature-name *providers*))
