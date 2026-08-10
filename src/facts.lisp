@@ -73,6 +73,17 @@ Optional keyword arguments:
                   (when doc (list :doc doc)))))
   key)
 
+(defun declare-fact (key &key type doc)
+  "Document a fact key that has no prober -- e.g. a profile-only fact like
+:work-p or :languages -- without registering one. Populates *FACT-METADATA*
+so `linacs list` shows the fact and APPLY-PROFILE does not warn on it as a
+possible typo. Same metadata keywords as REGISTER-FACT-PROBER: :TYPE (a CL
+type specifier) and :DOC (a human-readable description)."
+  (setf (gethash key *fact-metadata*)
+        (append (when type (list :type type))
+                (when doc (list :doc doc))))
+  key)
+
 (defun default-fact-probers ()
   "Register the built-in facts LINACS always probes, with type metadata."
   (register-fact-prober :os #'probe-os "linacs-core"

@@ -609,6 +609,7 @@ lives in a plain hash table, held in a special variable:
 | `*providers*` | `define-provider` | Yes |
 | `*catalogs*` | `define-catalog` / `register-catalog` | Yes |
 | `*fact-probers*` | `register-fact-prober` | Yes |
+| `*fact-metadata*` | `register-fact-prober` / `declare-fact` | Yes |
 | `*pipeline-hooks*` | `register-pipeline-hook` | Yes |
 | `*profiles*` | `define-profile` | Yes |
 | `*action-types*` | `register-action-type` | **No** |
@@ -670,6 +671,7 @@ map of what's extensible and where it's registered:
 | An implementation of a capability | `define-provider` / `register-provider` | a project's `providers/*.lisp` |
 | A distro package-name mapping | `register-catalog` | a project's `catalogs/*.lisp` |
 | A new probed fact | `register-fact-prober` | a project's `providers/*.lisp` |
+| Document a profile-only fact (no prober) | `declare-fact` | a project's `profiles/*.lisp` |
 | Cross-cutting behavior (audit logging, a confirmation prompt) | `register-pipeline-hook` | a project's `hooks/*.lisp` |
 | A new `:via` handler for the `:package` action type | `register-package-via-handler` | a plugin, or a project's `providers/*.lisp` |
 | A template renderer | a `RENDER-*` function | a project's `templates/*.lisp` |
@@ -1280,6 +1282,24 @@ guess which one to trust — I'll stop at startup and tell you both
 registrants, so you can remove one or make one depend on and defer to the
 other.
 
+**Documenting a profile-only fact** (no prober — a fact your *profile*
+sets, like `:work-p`): use `declare-fact`, typically in `profiles/*.lisp`
+next to the profile that uses it. It takes the same `:type`/`:doc`
+keywords as `register-fact-prober`, but registers no prober:
+
+```lisp
+(declare-fact :work-p
+  :type '(member t nil)
+  :doc "T on work machines, set by profile")
+```
+
+This stops me from warning "possible typo?" every time a profile
+overrides the key, and makes it show up in `linacs list`. I only warn on
+profile overrides for genuinely unknown keys — those with neither a
+prober nor metadata. Don't `declare-fact` a key that already has a
+prober: the declared `:type` is enforced at probe time, so a legitimate
+result the prober actually returns (like `:unknown`) could trip it.
+
 ### 5.15 Profiles
 
 **Defining one:**
@@ -1312,6 +1332,12 @@ whatever the fact probers found, with no overrides:
 ```sh
 linacs plan -C ~/my-home))
 ```
+
+**Profile-only facts** (`:work-p` above, `:languages`, etc.) have no
+prober, so unless you document them I'd warn "possible typo?" on every
+run. Document them once next to the profiles with `declare-fact` (see
+§5.14) and the warnings stop — see the canonical example in
+`linacs-home/profiles/machines.lisp`.
 
 ### 5.16 Catalogs
 

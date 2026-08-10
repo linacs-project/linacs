@@ -38,8 +38,9 @@
    #:supply-value
    #:specify-renderer #:treat-as-static
 
-   ;; facts / profiles
+    ;; facts / profiles
     #:register-fact-prober
+    #:declare-fact
     #:probe-all-facts
     #:fact
     #:fact*
@@ -199,7 +200,7 @@
     #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow
     ;; registration
     #:define-feature #:register-feature #:define-provider #:register-provider
-    #:define-catalog #:register-catalog #:register-fact-prober
+    #:define-catalog #:register-catalog #:register-fact-prober #:declare-fact
     #:register-action-type #:register-package-via-handler #:register-pipeline-hook
     #:register-sudo-requiring-action-type #:register-non-privileged-package-via
     ;; authoring helpers
@@ -226,7 +227,7 @@
     #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow
     ;; registration
     #:define-feature #:register-feature #:define-provider #:register-provider
-    #:define-catalog #:register-catalog #:register-fact-prober
+    #:define-catalog #:register-catalog #:register-fact-prober #:declare-fact
     #:register-action-type #:register-package-via-handler #:register-pipeline-hook
     #:register-sudo-requiring-action-type #:register-non-privileged-package-via
     ;; authoring helpers
