@@ -91,7 +91,10 @@ never notices any of this; a persistent one does."
   (discover-project (cli-opts-root opts)))
 
 (defmacro with-cli-error-report (&body body)
-  `(handler-case (progn ,@body)
+  `(handler-case
+       (handler-bind ((linacs-error #'handle-linacs-error-interactively))
+         (let ((*restart-menu-p* (interactive-stream-p *query-io*)))
+           ,@body))
      (linacs-error (e)
        (linacs.log:error* "~a" e)
        (uiop:quit 1))

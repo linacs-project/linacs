@@ -73,6 +73,10 @@
 (load "tests/cli/flag-parsing.lisp")
 (format t "CLI flag parsing tests loaded~%")
 
+(format t "Loading restart menu tests...~%")
+(load "tests/restart-menu.lisp")
+(format t "Restart menu tests loaded~%")
+
 (format t "Loading API surface tests...~%")
 (load "tests/api/surface.lisp")
 (format t "API surface tests loaded~%")
@@ -84,18 +88,18 @@
 (format t "~%Running all tests...~%")
 
 ;; Run all tests
-(let ((results (fiveam:run-all-tests :summary nil)))
+(let ((passed (fiveam:run-all-tests :summary nil)))
   (format t "~%======================================~%")
   (format t "TEST RESULTS SUMMARY~%")
   (format t "======================================~%~%")
 
-  (if (typep results 'integer)
-      (progn
-        (format t "✗ Tests failed: ~a~%~%" results)
-        (format t "Status: FAILED~%~%"))
+  (if passed
       (progn
         (format t "✓ All tests passed~%~%")
-        (format t "Status: PASSED~%~%")))
+        (format t "Status: PASSED~%~%"))
+      (progn
+        (format t "✗ Tests failed~%~%")
+        (format t "Status: FAILED~%~%")))
 
   (format t "Test run complete!~%")
   (format t "======================================~%~%"))

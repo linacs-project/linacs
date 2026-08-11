@@ -25,7 +25,10 @@ auto-loaded, in this order, before home.lisp.")
   (handler-case (load path)
     (linacs-error (e) (error e))
     (error (e)
-      (with-linacs-restarts ()
+      (with-linacs-restarts
+          (:on-retry (lambda () (%load-lisp-file path))
+           :on-skip (lambda () (linacs.log:warn* "Skipping ~a" path) nil)
+           :on-abort (lambda () (throw 'linacs-abort nil)))
         (error 'file-discovery-load-error :path path :underlying e)))))
 
 (defun collect-lisp-files-recursively (dir)
@@ -41,16 +44,17 @@ registrations via filename."
   "Load every .lisp file found (recursively, alphabetically) under each of
 the six conventional subdirectories of ROOT, then load ROOT/home.lisp last."
   (let ((root (uiop:ensure-directory-pathname root)))
-    (dolist (dir-name *conventional-directories*)
-      (let ((dir (merge-pathnames (make-pathname :directory (list :relative dir-name)) root)))
-        (when (uiop:directory-exists-p dir)
-          (dolist (f (collect-lisp-files-recursively dir))
-            (linacs.log:debug* "Loading ~a" f)
-            (%load-lisp-file f)))))
-    (let ((home-file (merge-pathnames "home.lisp" root)))
-      (if (probe-file home-file)
-          (%load-lisp-file home-file)
-          (linacs.log:warn* "No home.lisp found under ~a" root)))))
+    (catch 'linacs-abort
+      (dolist (dir-name *conventional-directories*)
+        (let ((dir (merge-pathnames (make-pathname :directory (list :relative dir-name)) root)))
+          (when (uiop:directory-exists-p dir)
+            (dolist (f (collect-lisp-files-recursively dir))
+              (linacs.log:debug* "Loading ~a" f)
+              (%load-lisp-file f)))))
+      (let ((home-file (merge-pathnames "home.lisp" root)))
+        (if (probe-file home-file)
+            (%load-lisp-file home-file)
+            (linacs.log:warn* "No home.lisp found under ~a" root))))))
 
 (defun discover-plugins ()
   "Locate and load third-party ASDF systems named linacs-*, per the ASDF /

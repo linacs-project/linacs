@@ -99,32 +99,37 @@ Returns ORDERED so callers can inspect *ACTION-RESULTS* afterward."
 
   (let* ((prune (member :prune-explicitly-disabled (getf home :traits)))
          (failed-ids (make-hash-table :test 'equal)))
-    (dolist (action ordered)
-      (let ((id (action-identity action)))
-        (cond
-          ((and (getf action :disabled) prune)
-           (execute-action action :mode (if (eq mode :apply) :remove :check)))
-          ((getf action :disabled)
-           (when *progress-reporter*
-             (funcall *progress-reporter* action :skipped))
-           nil)
-          ((and continue-on-error
-                (some (lambda (dep) (gethash dep failed-ids))
-                      (getf action :depends-on)))
-           (setf (gethash id *action-results*) (list :status :skipped))
-           (when *progress-reporter*
-             (funcall *progress-reporter* action :skipped))
-           (when (>= linacs.log:*verbosity* 2)
-             (linacs.log:info "Skipping ~a -- depends on prior failure" id)))
-          (t
-           (handler-case
-               (execute-action action :mode mode)
-             (linacs-error (e)
-               (setf (gethash id *action-results*) (list :status :failed :error e))
-               (setf (gethash id failed-ids) t)
-               (if continue-on-error
-                   (linacs.log:warn* "~a failed; continuing" id)
-                   (error e)))))))))
+    (catch 'linacs-abort
+      (dolist (action ordered)
+        (let ((id (action-identity action)))
+          (cond
+            ((and (getf action :disabled) prune)
+             (execute-action action :mode (if (eq mode :apply) :remove :check)))
+            ((getf action :disabled)
+             (when *progress-reporter*
+               (funcall *progress-reporter* action :skipped))
+             nil)
+            ((and continue-on-error
+                  (some (lambda (dep) (gethash dep failed-ids))
+                        (getf action :depends-on)))
+             (setf (gethash id *action-results*) (list :status :skipped))
+             (when *progress-reporter*
+               (funcall *progress-reporter* action :skipped))
+             (when (>= linacs.log:*verbosity* 2)
+               (linacs.log:info "Skipping ~a -- depends on prior failure" id)))
+            (t
+             (handler-case
+                 ;; The interactive handler runs at signal time, while the
+                 ;; action's RETRY/SKIP/ABORT-PROCESSING restarts are still
+                 ;; live -- see HANDLE-LINACS-ERROR-INTERACTIVELY.
+                 (handler-bind ((linacs-error #'handle-linacs-error-interactively))
+                   (execute-action action :mode mode))
+               (linacs-error (e)
+                 (setf (gethash id *action-results*) (list :status :failed :error e))
+                 (setf (gethash id failed-ids) t)
+                 (if continue-on-error
+                     (linacs.log:warn* "~a failed; continuing" id)
+                     (error e))))))))))
   ordered)
 
 (defun run-pipeline (&key profile project-root (execute-mode :plan-only) continue-on-error)

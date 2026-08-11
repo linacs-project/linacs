@@ -251,35 +251,45 @@ ignores :depends-on edges that reference an identity not present in ACTIONS
 (defun execute-action (action &key (mode :apply))
   "Dispatch ACTION to its registered executor under MODE (:apply or :check).
 Records the outcome in *ACTION-RESULTS* for --continue support and verbose
-progress reporting.  Calls *PROGRESS-REPORTER* (if bound) before and after."
+progress reporting.  Calls *PROGRESS-REPORTER* (if bound) before and after.
+
+The RETRY / SKIP / ABORT-PROCESSING restarts are live for the duration of
+the executor call, with real bodies: RETRY re-runs the executor (recursively,
+re-establishing the restarts), SKIP records the action as skipped and moves
+on, and ABORT-PROCESSING stops the whole run via the LINACS-ABORT catch."
   (let* ((id (action-identity action))
-         (executor (find-executor (action-type action)))
-         result status)
+         (executor (find-executor (action-type action))))
     (setf *captured-subprocess-lines* nil)
     (when *progress-reporter*
       (funcall *progress-reporter* action :before))
-    (with-linacs-restarts ()
-      (handler-case
-          (progn
-            (setf result (funcall executor action :mode mode))
-            (setf status (getf result :status))
-            (when (and mode (eq mode :apply))
-              (unless status
-                (setf status :applied))
-              (setf (gethash id *action-results*) (list :status status)))
-            (when *progress-reporter*
-              (funcall *progress-reporter* action :after result))
-            (values result status))
-        (linacs-error (e)
-          (setf (gethash id *action-results*) (list :status :failed :error e))
-          (when *progress-reporter*
-            (funcall *progress-reporter* action :failed e))
-          (error e))
-        (error (e)
-          (setf (gethash id *action-results*) (list :status :failed :error e))
-          (when *progress-reporter*
-            (funcall *progress-reporter* action :failed e))
-          (error 'execution-failure
-                 :action-type (action-type action)
-                 :target (action-target action)
-                 :underlying e))))))
+    (labels ((run ()
+               (with-linacs-restarts
+                   (:on-retry #'run
+                    :on-skip (lambda ()
+                               (setf (gethash id *action-results*) (list :status :skipped))
+                               (values nil :skipped))
+                    :on-abort (lambda () (throw 'linacs-abort nil)))
+                 (handler-case
+                     (let ((result (funcall executor action :mode mode)))
+                       (let ((status (getf result :status)))
+                         (when (and mode (eq mode :apply))
+                           (unless status
+                             (setf status :applied))
+                           (setf (gethash id *action-results*) (list :status status)))
+                         (when *progress-reporter*
+                           (funcall *progress-reporter* action :after result))
+                         (values result status)))
+                   (linacs-error (e)
+                     (setf (gethash id *action-results*) (list :status :failed :error e))
+                     (when *progress-reporter*
+                       (funcall *progress-reporter* action :failed e))
+                     (error e))
+                   (error (e)
+                     (setf (gethash id *action-results*) (list :status :failed :error e))
+                     (when *progress-reporter*
+                       (funcall *progress-reporter* action :failed e))
+                     (error 'execution-failure
+                            :action-type (action-type action)
+                            :target (action-target action)
+                            :underlying e))))))
+      (run))))

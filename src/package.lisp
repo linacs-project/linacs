@@ -37,6 +37,12 @@
    #:retry-with-sudo
    #:supply-value
    #:specify-renderer #:treat-as-static
+   ;; interactive restart menu (compiled CLI)
+   #:with-linacs-restarts
+   #:handle-linacs-error-interactively
+   #:compute-linacs-restarts
+   #:*restart-menu-p*
+   #:*linacs-abort-function*
 
     ;; facts / profiles
     #:register-fact-prober
@@ -215,7 +221,13 @@
     ;; restarts
     #:retry #:skip #:abort-processing #:use-first #:use-second #:specify-provider
     #:skip-feature #:retry-with-sudo #:supply-value #:specify-renderer
-    #:treat-as-static)
+    #:treat-as-static
+    ;; interactive restart menu
+    #:with-linacs-restarts
+    #:handle-linacs-error-interactively
+    #:compute-linacs-restarts
+    #:*restart-menu-p*
+    #:*linacs-abort-function*)
   (:import-from :linacs.log
     #:info #:debug* #:warn* #:error* #:set-verbosity #:*verbosity*)
   (:export
@@ -243,6 +255,12 @@
     #:retry #:skip #:abort-processing #:use-first #:use-second #:specify-provider
     #:skip-feature #:retry-with-sudo #:supply-value #:specify-renderer
     #:treat-as-static
+    ;; interactive restart menu
+    #:with-linacs-restarts
+    #:handle-linacs-error-interactively
+    #:compute-linacs-restarts
+    #:*restart-menu-p*
+    #:*linacs-abort-function*
     ;; logging (re-exported so plugin authors need no separate :linacs.log import)
     #:info #:debug* #:warn* #:error* #:set-verbosity #:*verbosity*))
 

@@ -77,7 +77,11 @@ SPECIFY-PROVIDER / SKIP-FEATURE below) rather than only ever aborting."
              (error 'missing-provider :feature feature-name
                     :message (format nil "No provider ~a registered for feature ~a." via feature-name)))))
       ((null candidates)
-       (error 'missing-provider :feature feature-name))
+       (restart-case
+           (error 'missing-provider :feature feature-name)
+         (skip-feature ()
+           :report "Continue without this feature"
+           (values (lambda (facts) (declare (ignore facts)) nil) nil))))
       ((= (length candidates) 1)
        (values (second (first candidates)) (first (first candidates))))
       (t

@@ -632,20 +632,43 @@ every action type after the first call.
 ### 4.4 The condition system
 
 Every error path uses a real CLOS condition class from `conditions.lisp`,
-not a bare `(error "some string")`. Two conditions go further than that
+not a bare `(error "some string")`. Conditions go further than that
 and carry genuine, named, invokable restarts:
 
 - `action-conflict` offers `USE-FIRST`/`USE-SECOND`.
 - `missing-provider` (the ambiguous-multiple-providers case) offers
   `SPECIFY-PROVIDER` (with an `:interactive` clause, so a live debugger
-  prompts you for a name) and `SKIP-FEATURE`.
+  prompts you for a name) and `SKIP-FEATURE`; the no-candidate case offers
+  `SKIP-FEATURE` too.
 
 Everything an action executor itself raises is wrapped, at the point of
-execution, in `RETRY`/`SKIP`/`ABORT-PROCESSING`. The compiled CLI catches
-all of this in one place (`src/cli.lisp`'s `WITH-CLI-ERROR-REPORT`) and
-turns it into a one-line message; a live REPL sees the real condition and
-its real restarts instead. See §5.14 for exactly how to
-get the latter.
+execution, in `RETRY`/`SKIP`/`ABORT-PROCESSING`.
+
+The compiled CLI catches all of this in one place (`src/cli.lisp`'s
+`WITH-CLI-ERROR-REPORT`, plus `EXECUTE-PLAN` around each action during
+`apply`). On an interactive terminal it presents the real restart menu at
+signal time — while the restarts are still live — and you pick a number to
+invoke one:
+
+```
+[error] Conflicting definitions for (:COPY-FILE . "~/.gitconfig")
+  Definition A: provider :git-defaults
+  Definition B: provider :dotfiles-extra
+Restarts:
+  0. [USE-FIRST] Keep definition A (the existing action)
+  1. [USE-SECOND] Keep definition B (the new action)
+  2. [ABORT] Stop processing
+```
+
+Non-numeric or out-of-range choices re-prompt, and the trailing synthetic
+`[ABORT]` stops the run. `RETRY` re-runs the failed action (or reloads a
+file that failed during project-local discovery), `SKIP` records the
+action as skipped and moves on, and `ABORT-PROCESSING` stops the whole
+run. On a non-interactive terminal (CI, piped output) there is no terminal
+to read a choice from, so LINACS falls back to printing the one-line
+message and exiting — exactly what it did before the menu existed. A live
+REPL sees the real condition and its real restarts instead; see §5.26 for
+the full list of conditions and their restarts.
 
 ### 4.5 Why the core isn't auto-discovered
 
@@ -2120,10 +2143,13 @@ linacs apply --bogus-flag)
 
 I use the Common Lisp Condition System for every error, not exceptions in
 the exception-handling sense. That means every failure comes with
-concrete restarts, not just a stack trace. Every command — not just
-`apply` — catches these cleanly and prints a one-line error instead of an
-SBCL backtrace. Here's the full list of conditions I can signal, and what
-your options are at each one:
+concrete restarts, not just a stack trace. On an interactive terminal,
+`apply` and the other commands present these restarts as a numbered menu
+at the point of failure — pick a number and the restart runs, and the run
+continues (see §4.4). On a non-interactive terminal (CI, piped output)
+every command catches conditions cleanly and prints a one-line error
+instead of an SBCL backtrace. Here's the full list of conditions I can
+signal, and what your options are at each one:
 
 | Condition | When it happens | Your restarts |
 |---|---|---|
