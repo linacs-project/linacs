@@ -25,9 +25,13 @@
                :components
                ((:file "surface")))
      (:module "features"
-              :serial t
-              :components
-              ((:file "graph")))
+               :serial t
+               :components
+               ((:file "graph")))
+     (:module "providers"
+               :serial t
+               :components
+               ((:file "macros")))
       (:module "pipeline"
                :serial t
                :components

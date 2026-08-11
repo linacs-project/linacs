@@ -38,6 +38,10 @@
 (load "tests/features/graph.lisp")
 (format t "Features tests loaded~%")
 
+(format t "Loading provider tests...~%")
+(load "tests/providers/macros.lisp")
+(format t "Provider tests loaded~%")
+
  (format t "Loading pipeline tests...~%")
   (load "tests/pipeline/execution.lisp")
   (load "tests/pipeline/disabled-actions.lisp")
