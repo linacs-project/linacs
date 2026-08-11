@@ -24,9 +24,10 @@ tests/
 ```
 
 The canonical entry point is `run-all-tests.lisp` at the linacs project
-root, which loads the whole suite (including `tests/api/surface.lisp`,
-which is exercised there even though `linacs-tests.asd` does not list it)
-and prints a pass/fail summary.
+root, which loads the whole suite and prints a pass/fail summary. The
+`linacs-tests.asd` system definition registers every test file, so
+`asdf:load-system :linacs-tests` (or `make test`) runs the identical
+coverage.
 
 ## Running Tests
 
@@ -53,14 +54,19 @@ From a Lisp REPL:
 ;; Load the test system
 (asdf:load-system :linacs-tests)
 
-;; Run all tests
-(fiveam:run-all-tests :linacs-tests)
+;; Run all tests (run-all-tests exercises every registered suite)
+(fiveam:run-all-tests)
 ```
 
-Note: `linacs-tests.asd` covers the `actions/`, `dsl/`, `features/`,
-`pipeline/`, `cli/`, `facts/`, `privilege/`, `profiles/`, and `executors/`
-modules. `tests/api/surface.lisp` is exercised only via `run-all-tests.lisp`
-(see the note in Structure).
+### Using `make test`
+
+From the `linacs/tests` directory, `make test` runs the same suite via
+ASDF and exits non-zero if any check fails (usable in CI).
+
+Note: the master suite is the `linacs-tests` symbol in the
+`linacs-tests` package. FiveAM's `run!` needs that symbol, not the
+`:linacs-tests` keyword — prefer `(fiveam:run-all-tests)` or
+`(fiveam:run! (find-symbol "LINACS-TESTS" :linacs-tests))`.
 
 ### Using Roswell
 
@@ -81,6 +87,10 @@ ros run --load run-all-tests.lisp
 
 - **macros.lisp**: Tests DSL macro expansion (define-home, use-feature, file, etc.)
 - **validation.lisp**: Tests DSL argument validation
+- **dsl-form-registration.lisp**: Tests `define-dsl-form` /
+  `define-action-macro` / `register-dsl-form` (plugin-added home-level
+  forms, reachability from `:linacs.api`, `dsl-form-conflict` on
+  duplicates and on shadowing built-ins)
 
 ### Features Tests
 
@@ -128,14 +138,14 @@ Each executor is tested using `:check` mode to verify idempotency without side e
 ## Running Specific Test Suites
 
 ```lisp
-;; Run a specific suite
-(fiveam:run-suite :action-identity)
+;; Run a specific suite (the suite symbol lives in the linacs-tests package)
+(fiveam:run! (find-symbol "ACTION-IDENTITY" :linacs-tests))
 
 ;; Run tests matching a pattern
 (fiveam:run-tests "action-identity")
 
 ;; Run a specific test
-(fiveam:run-test 'action-identity-test-simple-identity)
+(fiveam:run-test (find-symbol "ACTION-IDENTITY-TEST-SIMPLE-IDENTITY" :linacs-tests))
 ```
 
 ## Adding New Tests

@@ -6,6 +6,7 @@
    #:file
    #:run-pipeline
    #:register-pipeline-hook
+   #:dsl-form-conflict
    #:*pipeline-hooks*
    #:*current-home-thunk*
    #:*current-home-name*

@@ -5,6 +5,7 @@
 # Target directories
 TEST_DIR := /tmp/linacs-test-env
 SBCL_USER_INIT := $(TEST_DIR)/sbcl-init.lisp
+SBCL := sbcl
 
 help:
 	@echo "LINACS Test Suite Makefile"
@@ -22,18 +23,18 @@ setup-lisp:
 
 install-deps:
 	@echo "Installing FiveAM test framework..."
-	@echo "(ql:quickload :fiveam)" > $(SBCL_USER_INIT)
-	@echo "(uiop:quit)" >> $(SBCL_USER_INIT)
-	@sbcl --eval "$(cat $(SBCL_USER_INIT))" --load $(SBCL_USER_INIT) 2>/dev/null || \
+	@$(SBCL) --non-interactive --eval '(require :asdf)' \
+	  --eval '(handler-case (ql:quickload :fiveam) (error (c) (format t "FiveAM install failed: ~a~%" c) (uiop:quit 1)))' || \
 	(echo "FiveAM not installed. Please run: (ql:quickload :fiveam) in SBCL" && false)
 
 test: setup-lisp install-deps
 	@echo "Running LINACS test suite..."
-	@cd $(TEST_DIR)
-	@echo "(asdf:load-system :linacs-tests)" > run-tests.lisp
-	@echo "(flet ((run () (fiveam:run-all-tests :linacs-tests) (uiop:quit))) (run))" >> run-tests.lisp
-	@sbcl --eval "$(cat $(SBCL_USER_INIT))" --load run-tests.lisp
-	@rm -f $(SBCL_USER_INIT)
+	@$(SBCL) --non-interactive \
+	  --eval '(require :asdf)' \
+	  --eval '(push #P"$(CURDIR)/../" asdf:*central-registry*)' \
+	  --eval '(push #P"$(CURDIR)/" asdf:*central-registry*)' \
+	  --eval '(asdf:load-system :linacs-tests)' \
+	  --eval '(unless (fiveam:run-all-tests) (uiop:quit 1))'
 
 clean:
 	@echo "Cleaning test environment..."

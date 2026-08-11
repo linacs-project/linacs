@@ -43,6 +43,14 @@
                      (action-conflict-def-a c)
                      (action-conflict-def-b c)))))
 
+(define-condition dsl-form-conflict (linacs-error)
+  ((name :initarg :name :reader dsl-form-conflict-name)
+   (existing :initarg :existing :reader dsl-form-conflict-existing :initform nil))
+  (:report (lambda (c stream)
+             (format stream "A DSL form ~a is already registered~@[ by ~a~] and cannot be redefined.~%~%No plugin or project may silently shadow an existing home-level form."
+                     (dsl-form-conflict-name c)
+                     (dsl-form-conflict-existing c)))))
+
 (define-condition insufficient-privileges (linacs-error)
   ((count :initarg :count :reader insufficient-privileges-count))
   (:report (lambda (c stream)

@@ -31,6 +31,7 @@
 (format t "Loading DSL tests...~%")
 (load "tests/dsl/macros.lisp")
 (load "tests/dsl/validation.lisp")
+(load "tests/dsl/dsl-form-registration.lisp")
 (format t "DSL tests loaded~%")
 
 (format t "Loading features tests...~%")

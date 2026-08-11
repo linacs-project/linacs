@@ -41,20 +41,101 @@
 (defvar *current-home-package-preference* nil
   "Set by the PACKAGE-PREFERENCE form inside DEFINE-HOME.")
 
+(defvar *dsl-forms* (make-hash-table :test 'equal)
+  "Maps DSL form name (uppercase string) -> plist (:source <label>) describing
+where the form was defined. Populated by REGISTER-DSL-FORM and, for core's own
+built-in convenience forms, by DEFAULT-DSL-FORMS at bootstrap. Purely
+documentation for `linacs list`; never consulted by resolution or execution.")
+
+(defvar *core-built-in-dsl-forms*
+  '("FILE" "DIRECTORY" "SYMLINK" "SECRET" "ENV-VAR" "CONFIG-LINES" "CONFIG-INI"
+    "CONFIG-ENV" "USER" "GROUP" "AUTHORIZED-KEY" "PERMISSIONS" "MOUNT" "SYSCTL"
+    "KERNEL-MODULE" "HOSTNAME" "LOCALE" "FIREWALL" "CRON" "COMMAND" "CLONE"
+    "STOW" "PACKAGE")
+  "The home-level convenience forms LINACS itself defines and re-exports
+through :linacs.api. Re-registered into *DSL-FORMS* at bootstrap, after
+RESET-PROJECT-REGISTRIES clears the registry.")
+
 (defun location-from-load-pathname ()
   "Capture the file being loaded at macroexpansion time."
   (list :file (or (ignore-errors (namestring *load-pathname*))
                   (ignore-errors (namestring *compile-file-pathname*))
                   "<unknown>")))
 
+(defun current-dsl-form-source ()
+  "Best-effort label for the file currently being loaded, for DSL-form metadata."
+  (or (getf (location-from-load-pathname) :file) "<unknown>"))
+
+(defun register-dsl-form (name &key (source (current-dsl-form-source)))
+  "Make the macro NAME usable unqualified in :linacs.api -- and therefore in
+home.lisp and every discovered project file, which are all read in :linacs.api.
+
+If the file loading this form is itself read in :linacs.core (core's own
+built-in convenience forms), this is a metadata-only no-op: they are declared
+statically in :linacs.api's defpackage and never need a runtime import. That is
+a deliberate strong check on *PACKAGE* rather than on NAME's home package:
+SBCL's :import-from shares symbol identity across packages, so
+LINACS.API:FILE and LINACS.CORE:FILE are the same symbol and a plugin package
+that inherits FILE would otherwise be indistinguishable from core itself.
+
+Otherwise the name must not already exist in :linacs.api: if it does, signal
+DSL-FORM-CONFLICT (abort-only, no silent winner) rather than shadow an
+existing home-level form -- the same no-clobber rule as fact probers. If the
+name is free, NAME is imported into :linacs.api.
+
+Programmatic twin of DEFINE-DSL-FORM (which DEFMACROs and registers). Returns
+NAME."
+  (let* ((key (symbol-name name))
+         (api (find-package :linacs.api))
+         (existing (and api (nth-value 1 (find-symbol key api))))
+         (registering-in-core (eq *package* (find-package :linacs.core))))
+    (when (and existing (not registering-in-core))
+      (error 'dsl-form-conflict
+             :name key
+             :existing (or (getf (gethash key *dsl-forms*) :source) "<unknown>")))
+    (setf (gethash key *dsl-forms*) (list :source source))
+    (when (and api (not registering-in-core))
+      (import (list name) api))
+    name))
+
+(defun default-dsl-forms ()
+  "Re-register core's built-in home-level convenience forms into *DSL-FORMS*,
+so `linacs list` reports them alongside plugin-defined forms even after
+RESET-PROJECT-REGISTRIES clears the registry."
+  (dolist (name *core-built-in-dsl-forms*)
+    (setf (gethash name *dsl-forms*) (list :source "core built-in"))))
+
+(defmacro define-dsl-form (name lambda-list &body body)
+  "Define NAME as a home-level DSL macro usable unqualified in :linacs.api
+(home.lisp, features/, providers/, ...). Expands to REGISTER-DSL-FORM -- which
+conflict-checks and aborts on a duplicate name before anything is clobbered --
+followed by an ordinary DEFMACRO in the current package.
+
+    (define-dsl-form kde-config (file group key value &rest opts)
+      ...body...)
+
+This is the general, plugin-facing form; DEFINE-ACTION-MACRO covers the common
+'(target &rest opts)' shape and registers the same way."
+  `(progn
+     (register-dsl-form ',name)
+     (defmacro ,name ,lambda-list ,@body)))
+
 (defmacro define-action-macro (name action-type source &key extra-plist)
-  `(defmacro ,name (target &rest opts)
-     (let* ((loc (location-from-load-pathname))
-            (action (list* :action ,action-type :target target
-                           ,@extra-plist
-                           (append opts
-                                   (list :priority :user :source ,source :location loc)))))
-       `(progn (push ',action *current-home-actions*) ',action))))
+  "Define NAME as a home-level DSL macro, for the common '(target &rest opts)'
+shape, that pushes a :ACTION-TYPE action into *CURRENT-HOME-ACTIONS*. The
+result is registered via REGISTER-DSL-FORM, so it is usable unqualified in
+:linacs.api (home.lisp and every discovered project file) automatically --
+plugin authors need no manual import. Conflicts with an already-registered
+form of the same name signal DSL-FORM-CONFLICT before the macro is redefined."
+  `(progn
+     (register-dsl-form ',name)
+     (defmacro ,name (target &rest opts)
+       (let* ((loc (location-from-load-pathname))
+              (action (list* :action ,action-type :target target
+                             ,@extra-plist
+                             (append opts
+                                     (list :priority :user :source ,source :location loc)))))
+         `(progn (push ',action *current-home-actions*) ',action)))))
 
 (defmacro package-preference (&rest chain)
   "Declare the ordered list of :via methods to try for (package ...) forms

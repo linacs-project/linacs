@@ -7,17 +7,23 @@
     :components
     ((:file "package")
      (:file "helpers")
+     (:file "restart-menu")
      (:module "actions"
-              :serial t
-              :components
-              ((:file "identity")
-               (:file "dedup")
-               (:file "ordering")))
+               :serial t
+               :components
+               ((:file "identity")
+                (:file "dedup")
+                (:file "ordering")))
      (:module "dsl"
-              :serial t
-              :components
-              ((:file "macros")
-               (:file "validation")))
+               :serial t
+               :components
+               ((:file "macros")
+                (:file "validation")
+                (:file "dsl-form-registration")))
+     (:module "api"
+               :serial t
+               :components
+               ((:file "surface")))
      (:module "features"
               :serial t
               :components

@@ -82,12 +82,14 @@ never notices any of this; a persistent one does."
   (clrhash *catalogs*)
   (clrhash *profiles*)
   (clrhash *pipeline-hooks*)
+  (clrhash *dsl-forms*)
   (setf *current-home-thunk* nil))
 
 (defun bootstrap (opts)
   "Run Discovery (step 0) against OPTS's project root."
   (reset-project-registries)
   (default-fact-probers)
+  (default-dsl-forms)
   (discover-plugins)
   (discover-project-plugins (cli-opts-root opts))
   (discover-project (cli-opts-root opts)))
@@ -667,6 +669,14 @@ NIL if no override was given. Takes precedence over the home's :via."
   (let ((rows (loop for k being the hash-key of *action-types*
                      collect (list (string-downcase (string k)) (action-type-description k)))))
     (print-table '("TYPE" "DESCRIPTION") (sort rows #'string< :key #'first)))
+  (terpri)
+
+  (format t "DSL forms:~%")
+  (let ((rows (loop for name being the hash-key of *dsl-forms* using (hash-value entry)
+                    collect (list (string-downcase name) (getf entry :source)))))
+    (if rows
+        (print-table '("FORM" "DEFINED BY") (sort rows #'string< :key #'first))
+        (format t "  (none registered)~%")))
   (terpri)
 
   (format t "Facts:~%")

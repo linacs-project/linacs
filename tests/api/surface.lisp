@@ -25,7 +25,8 @@
 must be exportable from :linacs.api (i.e. findable there as EXTERNAL)."
   (let ((api (find-package :linacs.api))
         (need '("DEFINE-HOME" "DEFINE-PROFILE" "USE-FEATURE" "PACKAGE-PREFERENCE"
-                "DIRECT-ACTION" "DEFINE-ACTION-MACRO" "*CURRENT-HOME-ACTIONS*"
+                "DIRECT-ACTION" "DEFINE-ACTION-MACRO" "DEFINE-DSL-FORM"
+                "REGISTER-DSL-FORM" "*CURRENT-HOME-ACTIONS*"
                 "FILE" "SYMLINK" "SECRET" "ENV-VAR" "CONFIG-LINES" "CONFIG-INI"
                 "CONFIG-ENV" "USER" "GROUP" "AUTHORIZED-KEY" "PERMISSIONS"
                 "MOUNT" "SYSCTL" "KERNEL-MODULE" "HOSTNAME" "LOCALE" "FIREWALL"
@@ -40,7 +41,8 @@ must be exportable from :linacs.api (i.e. findable there as EXTERNAL)."
                 "ACTION-TYPE" "ACTION-TARGET" "ACTION-SOURCE-LABEL"
                 "ACTION-IDENTITY" "REPORT" "WHICH" "SHELL-OK-P"
                 "RUN-PRIVILEGED" "EXPAND-HOME"
-                "MISSING-PROVIDER" "ACTION-CONFLICT" "EXECUTION-FAILURE"
+                "MISSING-PROVIDER" "ACTION-CONFLICT" "DSL-FORM-CONFLICT"
+                "EXECUTION-FAILURE"
                 "RETRY" "SKIP" "ABORT-PROCESSING")))
     (every (lambda (name)
              (multiple-value-bind (sym status)
@@ -64,7 +66,8 @@ must be exportable from :linacs.api (i.e. findable there as EXTERNAL)."
                     (eq status :inherited)))
                 '("DEFINE-FEATURE" "DEFINE-PROVIDER" "REGISTER-CATALOG"
                   "USE-FEATURE" "FILE" "SECRET" "FACT" "REGISTER-PIPELINE-HOOK"
-                  "REGISTER-FACT-PROBER" "RUN-PRIVILEGED")))))
+                  "REGISTER-FACT-PROBER" "RUN-PRIVILEGED"
+                  "DEFINE-DSL-FORM" "REGISTER-DSL-FORM")))))
 
 (def-test api-consumer-package-sees-surface ()
   (is (consumer-package-finds-everything)

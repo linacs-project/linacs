@@ -22,6 +22,7 @@
    #:linacs-error
    #:missing-provider
    #:action-conflict
+   #:dsl-form-conflict
    #:insufficient-privileges
    #:permission-denied-mid-run
    #:non-interactive-prompt
@@ -141,6 +142,8 @@
    #:define-home
    #:use-feature
    #:define-action-macro
+   #:define-dsl-form
+   #:register-dsl-form
    #:file
    #:directory
    #:symlink
@@ -200,7 +203,8 @@
   (:import-from :linacs.core
     ;; DSL
     #:define-home #:define-profile #:use-feature #:package-preference
-    #:direct-action #:define-action-macro #:*current-home-actions*
+    #:direct-action #:define-action-macro #:define-dsl-form #:register-dsl-form
+    #:*current-home-actions*
     #:file #:symlink #:secret #:env-var #:config-lines #:config-ini #:config-env
     #:user #:group #:authorized-key #:permissions #:mount #:sysctl
     #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow
@@ -214,7 +218,8 @@
     #:action-type #:action-target #:action-source-label #:action-identity
     #:report #:which #:shell-ok-p #:run-privileged #:expand-home
     ;; conditions
-    #:linacs-error #:missing-provider #:action-conflict #:execution-failure
+    #:linacs-error #:missing-provider #:action-conflict #:dsl-form-conflict
+    #:execution-failure
     #:insufficient-privileges #:permission-denied-mid-run #:non-interactive-prompt
     #:fact-prober-conflict #:missing-template-renderer #:file-discovery-load-error
     #:pipeline-aborted-by-hook #:dependency-cycle
@@ -233,7 +238,8 @@
   (:export
     ;; DSL
     #:define-home #:define-profile #:use-feature #:package-preference
-    #:direct-action #:define-action-macro #:*current-home-actions*
+    #:direct-action #:define-action-macro #:define-dsl-form #:register-dsl-form
+    #:*current-home-actions*
     #:file #:symlink #:secret #:env-var #:config-lines #:config-ini #:config-env
     #:user #:group #:authorized-key #:permissions #:mount #:sysctl
     #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow
@@ -247,7 +253,8 @@
     #:action-type #:action-target #:action-source-label #:action-identity
     #:report #:which #:shell-ok-p #:run-privileged #:expand-home
     ;; conditions
-    #:linacs-error #:missing-provider #:action-conflict #:execution-failure
+    #:linacs-error #:missing-provider #:action-conflict #:dsl-form-conflict
+    #:execution-failure
     #:insufficient-privileges #:permission-denied-mid-run #:non-interactive-prompt
     #:fact-prober-conflict #:missing-template-renderer #:file-discovery-load-error
     #:pipeline-aborted-by-hook #:dependency-cycle
