@@ -37,7 +37,8 @@
                :components
                ((:file "execution")
                 (:file "disabled-actions")
-                (:file "hooks")))
+                (:file "hooks")
+                (:file "project-root")))
       (:module "cli"
                :serial t
                :components

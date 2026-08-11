@@ -112,6 +112,7 @@
    #:execute-plan
    #:run-pipeline
    #:*pipeline-hooks*
+   #:*project-root*
 
     ;; privilege
      #:privileged-p
@@ -217,6 +218,7 @@
     #:fact #:fact* #:fact-known-p #:feature-custom #:catalog-lookup
     #:action-type #:action-target #:action-source-label #:action-identity
     #:report #:which #:shell-ok-p #:run-privileged #:expand-home
+    #:*project-root*
     ;; conditions
     #:linacs-error #:missing-provider #:action-conflict #:dsl-form-conflict
     #:execution-failure
@@ -252,6 +254,7 @@
     #:fact #:fact* #:fact-known-p #:feature-custom #:catalog-lookup
     #:action-type #:action-target #:action-source-label #:action-identity
     #:report #:which #:shell-ok-p #:run-privileged #:expand-home
+    #:*project-root*
     ;; conditions
     #:linacs-error #:missing-provider #:action-conflict #:dsl-form-conflict
     #:execution-failure

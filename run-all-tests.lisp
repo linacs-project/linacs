@@ -46,6 +46,7 @@
   (load "tests/pipeline/execution.lisp")
   (load "tests/pipeline/disabled-actions.lisp")
   (load "tests/pipeline/hooks.lisp")
+  (load "tests/pipeline/project-root.lisp")
   (format t "Pipeline tests loaded~%")
 
   (format t "Loading executor tests...~%")
