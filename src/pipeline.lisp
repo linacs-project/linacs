@@ -31,16 +31,20 @@ accumulate duplicate hooks. Returns HOOK-FN."
   (dolist (hook (gethash point *pipeline-hooks*))
     (apply hook args)))
 
-(defun collect-actions-from-features (use-feature-requests)
+(defun collect-actions-from-features (use-feature-requests &key provider-overrides)
   "Step 2 (feature half): walk the feature graph starting from each
 use-feature request, resolving :requires, and call each selected provider.
-Returns a flat list of provider-tagged action plists."
+Returns a flat list of provider-tagged action plists.
+PROVIDER-OVERRIDES is an alist of (feature . provider) from the CLI's
+--provider T=P flag; when present for a feature, it takes precedence over
+the use-feature request's own :via."
   (let* ((root-names (mapcar (lambda (r) (getf r :feature)) use-feature-requests))
          (ordered-features (resolve-feature-graph root-names))
          (via-table (make-hash-table :test 'eq)))
     (dolist (r use-feature-requests) (setf (gethash (getf r :feature) via-table) (getf r :via)))
     (loop for fname in ordered-features
-          append (let* ((via (gethash fname via-table))
+          append (let* ((via (or (cdr (assoc fname provider-overrides))
+                                 (gethash fname via-table)))
                         (ignored (reset-facts-read)))
                    (declare (ignore ignored))
                    (multiple-value-bind (provider-fn provider-name)
@@ -58,20 +62,25 @@ Returns a flat list of provider-tagged action plists."
                                                                  provider-name fname)))))
                                raw-actions)))))))
 
-(defun resolve-plan (&key profile project-root)
+(defun resolve-plan (&key profile project-root provider-overrides platform)
   "Run Execution Model steps 1-4: probe facts, merge profile, run home
 thunk, resolve features, collect actions, deduplicate, and order.
 Returns (values ordered-actions home-plist).
 Discoverably named so callers that only need resolution (plan, check,
-diff, explain) can skip the execution step entirely."
+diff, explain) can skip the execution step entirely.
+PROVIDER-OVERRIDES is a (feature . provider) alist from --provider T=P;
+PLATFORM overrides the :os fact. Both are applied after the profile merge,
+so the command line wins over the home definition."
   (probe-all-facts)
   (apply-profile profile)
+  (apply-platform-override platform)
   (clrhash *action-results*)
 
   (let* ((home (run-current-home-thunk))
           (*package-preference-chain* (or (getf home :package-preference) '(:system)))
           (ignored (register-feature-customs (getf home :use-features)))
-         (provider-actions (collect-actions-from-features (getf home :use-features)))
+         (provider-actions (collect-actions-from-features (getf home :use-features)
+                                                          :provider-overrides provider-overrides))
          (user-actions (mapcar (lambda (a)
                                   (let* ((id (action-identity a))
                                          (loc (getf a :location))
@@ -132,16 +141,19 @@ Returns ORDERED so callers can inspect *ACTION-RESULTS* afterward."
                      (error e))))))))))
   ordered)
 
-(defun run-pipeline (&key profile project-root (execute-mode :plan-only) continue-on-error)
+(defun run-pipeline (&key profile project-root (execute-mode :plan-only) continue-on-error
+                           provider-overrides platform)
   "Run Execution Model steps 1-5 against the already-discovered home
 definition (i.e. discovery, step 0, must already have run via
 DISCOVER-PLUGINS / DISCOVER-PROJECT). Composes RESOLVE-PLAN and
 EXECUTE-PLAN. EXECUTE-MODE is :apply, :check, or :plan-only
 (resolve/order but do not call EXECUTE-ACTION at all).
 CONTINUE-ON-ERROR means skip failed actions and their dependents rather
-than aborting the entire run."
+than aborting the entire run.
+PROVIDER-OVERRIDES and PLATFORM are forwarded to RESOLVE-PLAN (see there)."
   (multiple-value-bind (ordered home)
-      (resolve-plan :profile profile :project-root project-root)
+      (resolve-plan :profile profile :project-root project-root
+                    :provider-overrides provider-overrides :platform platform)
     (unless (eq execute-mode :plan-only)
       (execute-plan ordered home :mode execute-mode :continue-on-error continue-on-error))
     (values ordered home)))

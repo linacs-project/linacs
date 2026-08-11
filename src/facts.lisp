@@ -502,6 +502,16 @@ Validates each probed value against its declared :type in *FACT-METADATA*
              *fact-probers*)
     (setf *facts* result)))
 
+(defun apply-platform-override (platform)
+  "Override the :os fact from the CLI's --platform NAME flag. Applied after
+PROBE-ALL-FACTS and APPLY-PROFILE so the explicitly-given command-line
+platform wins over both the auto-probe and any profile override. NAME is a
+raw string (e.g. \"fedora\", \"arch\", \"ubuntu\"), interned to a keyword;
+returns *FACTS*. A NIL PLATFORM is a no-op."
+  (when platform
+    (setf (getf *facts* :os) (intern (string-upcase platform) :keyword)))
+  *facts*)
+
 (defun fact (key)
   "Read a fact by keyword. Reflects probed values merged with any
 profile override -- the home definition cannot distinguish the two.

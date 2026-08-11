@@ -47,8 +47,8 @@ command's help instead of guessing what the person meant."
                   (if args
                       (let* ((kv (pop args)) (pos (position #\= kv)))
                         (if pos
-                            (push (cons (intern (string-upcase (subseq kv 0 pos)) :keyword)
-                                        (intern (string-upcase (subseq kv (1+ pos))) :keyword))
+                            (push (cons (intern (string-upcase (string-left-trim ":" (subseq kv 0 pos))) :keyword)
+                                        (intern (string-upcase (string-left-trim ":" (subseq kv (1+ pos)))) :keyword))
                                   (cli-opts-provider-overrides opts))
                             (push a unknown)))
                       (push a unknown)))
@@ -56,8 +56,10 @@ command's help instead of guessing what the person meant."
                  ((string= a "--continue") (setf (cli-opts-continue-on-error opts) t))
                  ((or (string= a "-o") (string= a "--output"))
                   (if args (setf (cli-opts-output opts) (pop args)) (push a unknown)))
-                 ((string= a "-vv") (incf (cli-opts-verbosity opts) 2))
-                 ((or (string= a "-v") (string= a "--verbose")) (incf (cli-opts-verbosity opts)))
+                 ((and (> (length a) 1) (char= (char a 0) #\-)
+                       (every (lambda (c) (char= c #\v)) (subseq a 1)))
+                  (incf (cli-opts-verbosity opts) (1- (length a))))
+                 ((string= a "--verbose") (incf (cli-opts-verbosity opts)))
                   ((string= a "--sudo-password-stdin") (setf (cli-opts-sudo-password-stdin opts) t))
                   ((string= a "--sudo-reset") (setf (cli-opts-sudo-reset opts) t))
                   ((string= a "--quiet") (setf (cli-opts-quiet opts) t) (setf (cli-opts-verbosity opts) 0))
@@ -237,6 +239,8 @@ and in sudo's own credential cache via sudo -S."
   (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
   (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
                                                     :project-root (cli-opts-root opts)
+                                                    :provider-overrides (cli-opts-provider-overrides opts)
+                                                    :platform (cli-opts-platform opts)
                                                     :execute-mode :plan-only)
     (when ordered (preflight-notice ordered))
     (let* ((prune-p (member :prune-explicitly-disabled (getf home :traits)))
@@ -275,7 +279,10 @@ and in sudo's own credential cache via sudo -S."
 (defun cmd-check (opts)
   (bootstrap opts)
   (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
-  (run-pipeline :profile (cli-opts-profile opts) :project-root (cli-opts-root opts) :execute-mode :plan-only)
+  (run-pipeline :profile (cli-opts-profile opts) :project-root (cli-opts-root opts)
+                :provider-overrides (cli-opts-provider-overrides opts)
+                :platform (cli-opts-platform opts)
+                :execute-mode :plan-only)
   (format t "Configuration resolves cleanly.~%")
   (sudo-reset-after-run opts))
 
@@ -460,6 +467,8 @@ On non-interactive terminals (piped output, CI), shows static line labels."
          (*captured-subprocess-lines* nil))
     (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
                                                       :project-root (cli-opts-root opts)
+                                                      :provider-overrides (cli-opts-provider-overrides opts)
+                                                      :platform (cli-opts-platform opts)
                                                       :execute-mode (if (cli-opts-dry-run opts) :check :apply)
                                                       :continue-on-error (cli-opts-continue-on-error opts))
       (declare (ignore ordered home))
@@ -474,6 +483,8 @@ we call execute-action separately to collect :would-change statuses."
   (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
   (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
                                                        :project-root (cli-opts-root opts)
+                                                       :provider-overrides (cli-opts-provider-overrides opts)
+                                                       :platform (cli-opts-platform opts)
                                                        :execute-mode :plan-only)
     (when ordered (preflight-notice ordered))
     (let* ((verbose (>= (cli-opts-verbosity opts) 2))
@@ -509,17 +520,24 @@ we call execute-action separately to collect :would-change statuses."
             (format t "~%~d action(s) would change.~%" (length changes)))
           (format t "No differences -- the system already matches the resolved plan for ~a.~%" (getf home :name))))))
 
+(defun cli-provider-override (opts feature-name)
+  "The provider the CLI's --provider T=P flag forces for FEATURE-NAME, or
+NIL if no override was given. Takes precedence over the home's :via."
+  (cdr (assoc feature-name (cli-opts-provider-overrides opts))))
+
 (defun cmd-explain (opts)
   (bootstrap opts)
   (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
                                                     :project-root (cli-opts-root opts)
+                                                    :provider-overrides (cli-opts-provider-overrides opts)
+                                                    :platform (cli-opts-platform opts)
                                                     :execute-mode :plan-only)
     (format t "Home: ~a~%Traits: ~a~%~%Features used:~%" (getf home :name) (or (getf home :traits) "none"))
     (print-table '("FEATURE" "PROVIDER USED" "DESCRIPTION" "COMPOSED OF")
                  (mapcar (lambda (r)
                            (let* ((fname (getf r :feature))
                                   (feature (feature-by-name fname)))
-                             (multiple-value-bind (fn chosen-name) (select-provider fname (getf r :via))
+                              (multiple-value-bind (fn chosen-name) (select-provider fname (or (cli-provider-override opts fname) (getf r :via)))
                                (declare (ignore fn))
                                (list (string-downcase (string fname))
                                      (if chosen-name (string-downcase (string chosen-name)) "(skipped)")
@@ -567,6 +585,7 @@ we call execute-action separately to collect :would-change statuses."
 (defun cmd-graph (opts)
   (bootstrap opts)
   (probe-all-facts) (apply-profile (cli-opts-profile opts))
+  (apply-platform-override (cli-opts-platform opts))
   (let ((home (run-current-home-thunk)))
     (if (getf home :use-features)
         (dolist (r (getf home :use-features))
@@ -584,6 +603,8 @@ we call execute-action separately to collect :would-change statuses."
   (bootstrap opts)
   (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
                                                        :project-root (cli-opts-root opts)
+                                                       :provider-overrides (cli-opts-provider-overrides opts)
+                                                       :platform (cli-opts-platform opts)
                                                        :execute-mode :plan-only)
     (declare (ignore home))
     (let ((out (if (cli-opts-output opts) (open (cli-opts-output opts) :direction :output :if-exists :supersede) t))
@@ -664,6 +685,7 @@ that provider on this machine\" without re-deriving it from probes."
   (bootstrap opts)
   (probe-all-facts)
   (apply-profile (cli-opts-profile opts))
+  (apply-platform-override (cli-opts-platform opts))
   (let* ((pairs (loop for (k v) on *facts* by #'cddr collect (cons k v)))
          (sorted (sort (copy-list pairs) #'string< :key (lambda (p) (string (car p)))))
          (key-width (reduce #'max (mapcar (lambda (p) (length (string (car p)))) sorted) :initial-value 0))
@@ -685,11 +707,13 @@ that provider on this machine\" without re-deriving it from probes."
              (type-str (princ-to-string (or (getf meta :type) ""))))
         (format t "~va  ~va  ~a~%" key-width (string key) val-width val-str type-str)))))
 
-(defun feature-resolution-summary (r)
+(defun feature-resolution-summary (r &optional overrides)
   "How feature request R will actually resolve: the chosen provider name,
-or a clear diagnosis of why it can't resolve -- used by `linacs doctor`."
+or a clear diagnosis of why it can't resolve -- used by `linacs doctor`.
+OVERRIDES is the --provider T=P alist; an entry for the feature takes
+precedence over the request's own :via."
   (let* ((fname (getf r :feature))
-         (via (getf r :via))
+         (via (or (cdr (assoc fname overrides)) (getf r :via)))
          (candidates (find-providers-for fname)))
     (cond
       ((null candidates) "NO PROVIDER REGISTERED")
@@ -705,6 +729,7 @@ or a clear diagnosis of why it can't resolve -- used by `linacs doctor`."
 (defun cmd-doctor (opts)
   (bootstrap opts)
   (probe-all-facts) (apply-profile (cli-opts-profile opts))
+  (apply-platform-override (cli-opts-platform opts))
   (format t "Diagnostic checks:~%")
   (let ((checks-passed 0) (checks-warn 0) (checks-failed 0))
     (flet ((log-check (label ok-p &optional detail)
@@ -737,12 +762,13 @@ or a clear diagnosis of why it can't resolve -- used by `linacs doctor`."
         (if (getf home :use-features)
             (dolist (r (getf home :use-features))
               (let* ((fname (getf r :feature))
-                     (summary (feature-resolution-summary r)))
+                     (summary (feature-resolution-summary r (cli-opts-provider-overrides opts))))
                 (log-check (format nil "Feature ~(~a~)" fname)
                            (not (search "NO PROVIDER" summary)) summary)))
             (log-check "Features defined" nil "no use-feature forms"))
         (let* ((all-actions (append (getf home :actions)
-                                    (collect-actions-from-features (getf home :use-features))))
+                                    (collect-actions-from-features (getf home :use-features)
+                                                                   :provider-overrides (cli-opts-provider-overrides opts))))
                (types-used (remove-duplicates (mapcar #'action-type all-actions)))
                (missing-executors (remove-if (lambda (k) (gethash k *action-types*)) types-used)))
           (log-check "All action types have executors" (null missing-executors)
@@ -791,13 +817,13 @@ or a clear diagnosis of why it can't resolve -- used by `linacs doctor`."
 
 (defparameter *option-specs*
   '((:root     "-C, --root DIR"      "Project root (default \".\")")
-    (:platform "-p, --platform NAME" "Target platform (default: auto-detect)")
+    (:platform "-p, --platform NAME" "Override the :os fact (e.g. fedora, arch, ubuntu)")
     (:profile  "--profile NAME"      "Select a defined profile (fact overrides)")
-    (:provider "--provider T=P"      "Prefer provider P for feature T")
+    (:provider "--provider T=P"      "Force provider P for feature T (e.g. :editor=:emacs)")
     (:dry-run  "-n, --dry-run"       "Show changes without executing them")
     (:continue "--continue"          "Keep going after a failed action")
     (:output   "-o, --output FILE"   "Write output to FILE")
-    (:verbose  "-v, --verbose"       "Increase verbosity (repeatable: -v, -vv)")
+    (:verbose  "-v, --verbose"       "Increase verbosity (repeatable: -v, -vv, -vvv)")
     (:quiet    "--quiet"             "Only show errors")
     (:sudo-password-stdin "--sudo-password-stdin"
                "Read sudo password from stdin before resolving")
@@ -808,18 +834,18 @@ or a clear diagnosis of why it can't resolve -- used by `linacs doctor`."
   (list
    (list :name "plan" :fn #'cmd-plan
           :summary "Show the resolved, ordered action list"
-          :options '(:root :profile :sudo-password-stdin :sudo-reset :verbose :quiet :help)
+          :options '(:root :profile :provider :platform :sudo-password-stdin :sudo-reset :verbose :quiet :help)
           :examples '("linacs plan -C ~/my-home --profile work-laptop"
                       "linacs plan --sudo-password-stdin < ~/.sudo-pass"))
    (list :name "apply" :fn #'cmd-apply
           :summary "Execute the ordered action list"
-          :options '(:root :profile :dry-run :continue :sudo-password-stdin :sudo-reset :verbose :quiet :help)
+          :options '(:root :profile :provider :platform :dry-run :continue :sudo-password-stdin :sudo-reset :verbose :quiet :help)
            :examples '("linacs apply -C ~/my-home --profile work-laptop   # sudo prompted once up front, not per-action"
                        "linacs apply -C ~/my-home --profile work-laptop -n   # dry run"
                       "linacs apply --sudo-password-stdin < ~/.sudo-pass"))
    (list :name "diff" :fn #'cmd-diff
           :summary "Show which actions would change something"
-          :options '(:root :profile :sudo-password-stdin :sudo-reset :verbose :quiet :help)
+          :options '(:root :profile :provider :platform :sudo-password-stdin :sudo-reset :verbose :quiet :help)
           :examples '("linacs diff -C ~/my-home --profile work-laptop"))
    (list :name "validate" :fn #'cmd-validate
           :summary "Check configuration syntax only (facts/providers untouched)"
@@ -827,32 +853,32 @@ or a clear diagnosis of why it can't resolve -- used by `linacs doctor`."
           :examples '("linacs validate -C ~/my-home"))
    (list :name "check" :fn #'cmd-check
           :summary "Fully resolve the configuration without executing anything"
-          :options '(:root :profile :sudo-password-stdin :sudo-reset :verbose :quiet :help)
+          :options '(:root :profile :provider :platform :sudo-password-stdin :sudo-reset :verbose :quiet :help)
           :examples '("linacs check -C ~/my-home --profile work-laptop"))
    (list :name "explain" :fn #'cmd-explain
-         :summary "Print the resolved feature graph and action order"
-         :options '(:root :profile :verbose :quiet :help)
-         :examples '("linacs explain -C ~/my-home --profile work-laptop"))
+          :summary "Print the resolved feature graph and action order"
+          :options '(:root :profile :provider :platform :verbose :quiet :help)
+          :examples '("linacs explain -C ~/my-home --profile work-laptop"))
    (list :name "graph" :fn #'cmd-graph
          :summary "Print the abstract feature dependency graph"
          :options '(:root :profile :verbose :quiet :help)
          :examples '("linacs graph -C ~/my-home --profile work-laptop"))
    (list :name "export" :fn #'cmd-export
-         :summary "Write the resolved action list as a data s-expression"
-         :options '(:root :profile :output :verbose :quiet :help)
-         :examples '("linacs export -C ~/my-home --profile work-laptop -o /tmp/plan.sexp"))
+          :summary "Write the resolved action list as a data s-expression"
+          :options '(:root :profile :provider :platform :output :verbose :quiet :help)
+          :examples '("linacs export -C ~/my-home --profile work-laptop -o /tmp/plan.sexp"))
    (list :name "list" :fn #'cmd-list
          :summary "List registered features, providers, catalogs, action types"
          :options '(:root :verbose :quiet :help)
          :examples '("linacs list -C ~/my-home"))
    (list :name "facts" :fn #'cmd-facts
-         :summary "Print resolved facts, after probing and profile merge"
-         :options '(:root :profile :verbose :quiet :help)
-         :examples '("linacs facts -C ~/my-home --profile work-laptop"))
+          :summary "Print resolved facts, after probing and profile merge"
+          :options '(:root :profile :platform :verbose :quiet :help)
+          :examples '("linacs facts -C ~/my-home --profile work-laptop"))
    (list :name "doctor" :fn #'cmd-doctor
-         :summary "Diagnose the environment and provider coverage"
-         :options '(:root :profile :verbose :quiet :help)
-         :examples '("linacs doctor -C ~/my-home --profile work-laptop"))
+          :summary "Diagnose the environment and provider coverage"
+          :options '(:root :profile :provider :platform :verbose :quiet :help)
+          :examples '("linacs doctor -C ~/my-home --profile work-laptop"))
    (list :name "init" :fn #'cmd-init
          :summary "Scaffold a new project"
          :options '(:root :help)

@@ -51,3 +51,24 @@
     (is (= count (hash-table-count linacs.core:*fact-probers*))
         "Every prober has metadata"))
   (reset-project-registries))
+
+(def-test apply-platform-override-sets-os ()
+  "apply-platform-override interns a --platform string into the :os fact"
+  (reset-project-registries)
+  (linacs.core:default-fact-probers)
+  (linacs.core:probe-all-facts)
+  (linacs.core::apply-platform-override "arch")
+  (is (eq (linacs.core:fact :os) :arch))
+  (linacs.core::apply-platform-override "fedora")
+  (is (eq (linacs.core:fact :os) :fedora))
+  (reset-project-registries))
+
+(def-test apply-platform-override-nil-is-noop ()
+  "apply-platform-override with NIL leaves the probed :os fact untouched"
+  (reset-project-registries)
+  (linacs.core:default-fact-probers)
+  (linacs.core:probe-all-facts)
+  (let ((probed (linacs.core:fact :os)))
+    (linacs.core::apply-platform-override nil)
+    (is (eq (linacs.core:fact :os) probed)))
+  (reset-project-registries))

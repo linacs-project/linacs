@@ -49,3 +49,67 @@
       (linacs.core:parse-args '("--sudo-password-stdin" "--bogus-flag"))
     (is (linacs.core:cli-opts-sudo-password-stdin opts))
     (is (equal unknown '("--bogus-flag")))))
+
+(def-test parse-verbosity-single-v ()
+  "-v raises verbosity by one above the default of 1 (to 2)"
+  (multiple-value-bind (opts unknown)
+      (linacs.core:parse-args '("-v"))
+    (is (= (linacs.core:cli-opts-verbosity opts) 2))
+    (is-false unknown)))
+
+(def-test parse-verbosity-double-v ()
+  "-vv raises verbosity by two above the default of 1 (to 3)"
+  (multiple-value-bind (opts unknown)
+      (linacs.core:parse-args '("-vv"))
+    (is (= (linacs.core:cli-opts-verbosity opts) 3))
+    (is-false unknown)))
+
+(def-test parse-verbosity-triple-v ()
+  "-vvv raises verbosity to 4 (was previously rejected as an unknown flag)"
+  (multiple-value-bind (opts unknown)
+      (linacs.core:parse-args '("-vvv"))
+    (is (= (linacs.core:cli-opts-verbosity opts) 4))
+    (is-false unknown)))
+
+(def-test parse-verbosity-quadruple-v ()
+  "-vvvv raises verbosity to 5"
+  (multiple-value-bind (opts unknown)
+      (linacs.core:parse-args '("-vvvv"))
+    (is (= (linacs.core:cli-opts-verbosity opts) 5))
+    (is-false unknown)))
+
+(def-test parse-verbose-long-form ()
+  "--verbose raises verbosity by one and is not misparsed as a -v run"
+  (multiple-value-bind (opts unknown)
+      (linacs.core:parse-args '("--verbose"))
+    (is (= (linacs.core:cli-opts-verbosity opts) 2))
+    (is-false unknown)))
+
+(def-test parse-verbosity-default ()
+  "No verbosity flags leaves the default of 1 in place"
+  (multiple-value-bind (opts unknown)
+      (linacs.core:parse-args '("--platform" "fedora"))
+    (is (= (linacs.core:cli-opts-verbosity opts) 1))
+    (is-false unknown)))
+
+(def-test parse-provider-override ()
+  "--provider T=P is parsed into cli-opts-provider-overrides as a (feature . provider) cons"
+  (multiple-value-bind (opts unknown)
+      (linacs.core:parse-args '("--provider" ":editor=:emacs"))
+    (is (equal (linacs.core:cli-opts-provider-overrides opts) '((:editor . :emacs))))
+    (is-false unknown)))
+
+(def-test parse-provider-override-repeatable ()
+  "Repeated --provider flags accumulate into the overrides list"
+  (multiple-value-bind (opts unknown)
+      (linacs.core:parse-args '("--provider" ":editor=:emacs" "--provider" ":shell=:fish"))
+    ;; overrides are pushed, so the last flag is at the head
+    (is (equal (linacs.core:cli-opts-provider-overrides opts) '((:shell . :fish) (:editor . :emacs))))
+    (is-false unknown)))
+
+(def-test parse-platform-flag ()
+  "--platform NAME stores the raw platform string"
+  (multiple-value-bind (opts unknown)
+      (linacs.core:parse-args '("--platform" "fedora"))
+    (is (string= (linacs.core:cli-opts-platform opts) "fedora"))
+    (is-false unknown)))

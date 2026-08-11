@@ -2071,16 +2071,24 @@ linacs init -C ~/my-home))
 
 ```
 -C, --root DIR        Project root (default .)
--p, --platform NAME    Target platform (default: auto-detect)
+-p, --platform NAME    Override the :os fact (e.g. fedora, arch, ubuntu)
     --profile NAME     Select a defined profile
-    --provider T=P     Prefer provider P for feature T
+    --provider T=P     Force provider P for feature T (e.g. :editor=:emacs)
 -n, --dry-run          Show changes without executing them (apply)
     --continue         Keep going after a failed action
 -o, --output FILE      Write output to FILE (export)
--v, --verbose          Increase verbosity (repeat for more: -v, -vv)
+-v, --verbose          Increase verbosity (repeatable: -v, -vv, -vvv)
     --quiet            Only show errors
 -h, --help             Show help and exit
 ```
+
+`--platform` and `--provider` are per-run overrides applied after the
+selected profile merge, so the command line wins over both the probed
+facts and the home definition. `--platform fedora` sets the `:os` fact
+(e.g. to cross-test catalog resolution on a different distro), and
+`--provider :editor=:emacs` forces the `:editor` feature to use the
+`:emacs` provider, ignoring any `:via` written in `home.lisp`. Both are
+repeatable/mixable and accepted by every command that resolves a plan.
 
 ### 5.25 Getting help
 

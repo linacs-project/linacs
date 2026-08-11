@@ -264,13 +264,13 @@ linacs <command> [options]
 | Option | Effect |
 |--------|--------|
 | `-C, --root DIR` | Project root (default `.`) |
-| `-p, --platform NAME` | Target platform (default: auto-detect) |
+| `-p, --platform NAME` | Override the `:os` fact (e.g. fedora, arch, ubuntu) |
 | `--profile NAME` | Select a defined profile for fact overrides |
-| `--provider T=P` | Prefer provider P for feature T |
+| `--provider T=P` | Force provider P for feature T (e.g. `:editor=:emacs`) |
 | `-n, --dry-run` | Show changes without executing them |
 | `--continue` | Keep going after a failed action |
 | `-o, --output FILE` | Write output to FILE (for `export`) |
-| `-v, --verbose` | Increase verbosity (repeat for debug) |
+| `-v, --verbose` | Increase verbosity (repeatable: `-v`, `-vv`, `-vvv`) |
 | `--quiet` | Only show errors |
 
 ## What you see when you run me
