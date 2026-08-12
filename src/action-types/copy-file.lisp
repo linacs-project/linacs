@@ -2,8 +2,8 @@
 ;;;;
 ;;;; The :copy-file executor. Compares intended content (plain, with
 ;;;; :content string, or with :template t rendered) against what's on
-;;;; disk, and writes only if different. :from resolves under the
-;;;; project's files/ directory.
+;;;; disk, and writes only if different. :from resolves under the asset
+;;;; root (default: the project root itself).
 ;;;;
 ;;;; :content takes precedence over :from / :template / :renderer when
 ;;;; present -- use it for generated config files that aren't backed by
@@ -20,10 +20,8 @@
     (if inline
         inline
         (let* ((from (getf action :from))
-               (root (or (getf action :project-root) "."))
-               (files-dir (merge-pathnames (make-pathname :directory '(:relative "files"))
-                                            (uiop:ensure-directory-pathname root)))
-               (src-path (merge-pathnames from files-dir)))
+               (asset-root (action-asset-root action))
+               (src-path (merge-pathnames from (uiop:ensure-directory-pathname asset-root))))
           (if (or (getf action :template) (getf action :renderer))
               (render-template action)
               (uiop:read-file-string src-path))))))

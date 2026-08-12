@@ -144,13 +144,21 @@ Only usable inside DEFINE-HOME."
   `(setf *current-home-package-preference* ',chain))
 
 (defmacro define-home (name &rest body)
-  "Capture NAME, an optional :traits (...), and the remaining forms as a
-thunk to be invoked later. Exactly one DEFINE-HOME form is allowed per
-project; loading a second one simply replaces the captured thunk."
-  (let (traits forms)
-    (if (eq (car body) :traits)
-        (setf traits (cadr body) forms (cddr body))
-        (setf forms body))
+  "Capture NAME, optional :traits (...) and :asset-root <dir> options, and
+the remaining forms as a thunk to be invoked later. Exactly one DEFINE-HOME
+form is allowed per project; loading a second one simply replaces the
+captured thunk. :asset-root is a path relative to the project root under
+which :from sources and stow packages resolve (default: the project root
+itself)."
+  (let (traits asset-root forms)
+    (loop while (and body (keywordp (car body)))
+          do (let ((opt (pop body)) (val (pop body)))
+               (case opt
+                 (:traits (setf traits val))
+                 (:asset-root (setf asset-root val))
+                 (otherwise
+                  (error "Unknown DEFINE-HOME option ~S." opt)))))
+    (setf forms body)
     `(setf *current-home-thunk*
             (lambda ()
               (setf *current-home-name* ',name)
@@ -161,6 +169,7 @@ project; loading a second one simply replaces the captured thunk."
               ,@forms
               (list :name ',name
                     :traits ',traits
+                    :asset-root ',asset-root
                     :use-features (reverse *current-home-use-features*)
                     :actions (reverse *current-home-actions*)
                     :package-preference *current-home-package-preference*)))))

@@ -805,7 +805,7 @@ precedence over the request's own :via."
 
 (defun cmd-init (opts)
   (let ((root (uiop:ensure-directory-pathname (cli-opts-root opts))))
-    (dolist (d (cons "files" *conventional-directories*))
+    (dolist (d *conventional-directories*)
       (ensure-directories-exist (merge-pathnames (make-pathname :directory (list :relative d)) root)))
     (let ((home-file (merge-pathnames "home.lisp" root)))
       (unless (probe-file home-file)

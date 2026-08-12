@@ -104,8 +104,7 @@ I'll create:
 ├── providers/
 ├── catalogs/
 ├── templates/
-├── hooks/
-└── files/
+└── hooks/
 ```
 
 `home.lisp` starts out about as small as it can be:
@@ -146,9 +145,12 @@ lives in, as long as it's one of them):
       '(:action :copy-file :to "~/.bashrc" :from "bashrc"))))
 ```
 
-Drop your actual `.bashrc` content at `files/bashrc` — this is where
-every `:from "..."` path in a convenience form resolves, always relative
-to `files/` under your project root, never the project root itself.
+Drop your actual `.bashrc` content at `bashrc` in your project root —
+this is where every `:from "..."` path in a convenience form resolves by
+default. The asset root (default: the project root; override it per home
+with `:asset-root`, e.g. `".."` to point at the parent of a `-C` machinery
+directory) is the single place file-related executors read their sources
+from.
 
 ### 2.3 Step 3 — teach me your distro's package names
 
@@ -905,14 +907,16 @@ Applies `ln -sf` semantics. Expands to `:symlink`.
 
 ### 5.6 `stow`
 
-`(stow "fish")` mirrors `files/fish/**` onto a target root (default `~`),
-GNU-Stow style — no dependency on the `stow` binary itself. It folds a
+`(stow "fish")` mirrors `fish/**` onto a target root (default `~`),
+GNU-Stow style — no dependency on the `stow` binary itself. The package
+name resolves under the asset root (default: the project root; a home may
+lift it with `:asset-root`). It folds a
 whole directory into a single symlink when nothing exists at the target
 yet, and falls back to merging file-by-file when the target already
 exists for real, recursing as deep as it needs to:
 
 ```lisp
-;; files/fish/.config/fish/config.fish -> ~/.config/fish/config.fish
+;; fish/.config/fish/config.fish -> ~/.config/fish/config.fish
 ;; (folds the highest untaken directory -- if ~/.config doesn't exist
 ;; either, ~/.config itself becomes the symlink, not just ~/.config/fish)
 (stow "fish")

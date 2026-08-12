@@ -2,7 +2,7 @@
 ;;;;
 ;;;; The :stow executor. Re-implements GNU Stow's own algorithm natively --
 ;;;; no dependency on the `stow` binary. Given a package directory under
-;;;; the project's files/ (e.g. files/fish/.config/fish/config.fish), it
+;;;; the asset root (e.g. fish/.config/fish/config.fish), it
 ;;;; mirrors that tree onto a target root (default ~), symlinking a whole
 ;;;; subtree at the highest possible level when nothing exists there yet
 ;;;; ("folding"), and recursing to merge file-by-file when the
@@ -14,8 +14,8 @@
 ;;;;
 ;;;; Usage:
 ;;;;   (:action :stow :target "fish")
-;;;;   ;; mirrors files/fish/** onto ~, e.g.
-;;;;   ;; files/fish/.config/fish/config.fish -> ~/.config/fish/config.fish
+;;;;   ;; mirrors <asset-root>/fish/** onto ~, e.g.
+;;;;   ;; fish/.config/fish/config.fish -> ~/.config/fish/config.fish
 ;;;;
 ;;;;   (:action :stow :target "fish" :to "/etc/skel")   ; a different target root
 ;;;;   (:action :stow :target "fish-work" :from "fish") ; source dir name differs from identity
@@ -177,12 +177,14 @@ would destroy the other package's data."
 
 (defun stow-source-dir (action)
   "The absolute, canonicalized path to this action's package directory
-under the project's files/ -- always absolute so the symlinks created
+under the asset root -- always absolute so the symlinks created
 remain valid regardless of the working directory at a later run."
-  (let* ((project-root (or (getf action :project-root) "."))
-         (abs-root (namestring (truename (uiop:ensure-directory-pathname project-root))))
+  (let* ((asset-root (action-asset-root action))
+         (abs-root (if (probe-file (uiop:ensure-directory-pathname asset-root))
+                       (namestring (truename (uiop:ensure-directory-pathname asset-root)))
+                       (string-right-trim "/" asset-root)))
          (pkg (or (getf action :from) (action-target action))))
-    (string-right-trim "/" (format nil "~afiles/~a" abs-root pkg))))
+    (string-right-trim "/" (format nil "~a/~a" abs-root pkg))))
 
 (defun stow-merge-interactive (source target mode force-p)
   "Run STOW-MERGE, offering a FORCE restart that re-runs the merge with
@@ -211,4 +213,4 @@ T if something changed (or, in :check mode, would change)."
                (report :removed :target package-name)))))
 
 (register-action-type :stow #'execute-stow
-  :description "Symlink a files/ package onto a target root, GNU-Stow style: fold whole directories when possible, merge file-by-file when the target already exists")
+  :description "Symlink an asset-root package onto a target root, GNU-Stow style: fold whole directories when possible, merge file-by-file when the target already exists")

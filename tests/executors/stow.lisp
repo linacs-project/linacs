@@ -13,12 +13,12 @@
 (in-suite executor-stow)
 
 (defun make-stow-fixture (name &key package-file)
-  "A temp project with files/NAME/<PACKAGE-FILE> (a real file) and a fresh,
+  "A temp project with NAME/<PACKAGE-FILE> (a real file) and a fresh,
 empty target root. Returns (values project-root target-root package-path)."
   (let* ((root (make-temp-dir (format nil "stow-~a" name)))
          (target (make-temp-dir (format nil "stow-target-~a" name)))
          (pkg-root (uiop:ensure-directory-pathname
-                    (format nil "~afiles/~a/" (namestring root) name))))
+                    (format nil "~a~a/" (namestring root) name))))
     (ensure-directories-exist pkg-root)
     (if package-file
         (let ((path (merge-pathnames package-file pkg-root)))
@@ -128,7 +128,7 @@ empty target root. Returns (values project-root target-root package-path)."
   (multiple-value-bind (root target pkg-a)
       (make-stow-fixture "fold-a" :package-file ".config/demo/a.conf")
     (declare (ignore pkg-a))
-    (let* ((pkg-b (format nil "~afiles/fold-b/" (namestring root)))
+    (let* ((pkg-b (format nil "~afold-b/" (namestring root)))
            (b-path (merge-pathnames ".config/demo/b.conf" (uiop:ensure-directory-pathname pkg-b))))
       (write-fixture-file b-path "b content")
       (let ((action-a `(:action :stow :target "fold-a" :project-root ,root :to ,target))
@@ -143,3 +143,28 @@ empty target root. Returns (values project-root target-root package-path)."
           (it.bese.fiveam:is (not (symlink-p config-dir)))
           (it.bese.fiveam:is (string= "package content" (read-file a-leaf)))
           (it.bese.fiveam:is (string= "b content" (read-file b-leaf))))))))
+
+(def-test stow-resolves-under-custom-asset-root ()
+  "A :stow action carrying an explicit :asset-root resolves its package
+directory under that root (e.g. a dotfiles repo root above the config
+subfolder), not the project root or any files/ directory."
+  (let* ((root (make-temp-dir "asset-stow"))
+         (target (make-temp-dir "asset-stow-target"))
+         (assets (uiop:ensure-directory-pathname (format nil "~apkgs/" (namestring root)))))
+    (unwind-protect
+         (progn
+           (write-fixture-file (merge-pathnames ".config/demo/x.conf"
+                                                (uiop:ensure-directory-pathname
+                                                 (format nil "~aassetpkg/" (namestring assets))))
+                               "asset content")
+           (let* ((action `(:action :stow :target "assetpkg"
+                                    :project-root ,(namestring root)
+                                    :asset-root ,(namestring assets)
+                                    :to ,(namestring target)))
+                  (result (linacs.core:execute-action action :mode :apply))
+                  (leaf (merge-pathnames ".config/demo/x.conf"
+                                         (uiop:ensure-directory-pathname target))))
+             (it.bese.fiveam:is (eq :changed (getf result :status)))
+             (it.bese.fiveam:is (string= "asset content" (read-file leaf)))))
+      (uiop:delete-directory-tree target :validate t)
+      (uiop:delete-directory-tree root :validate t))))

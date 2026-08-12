@@ -93,34 +93,39 @@ Every action is idempotent by construction. The package executor checks before i
 
 ## Stow is my backbone
 
-You will add new applications to your home faster than I can ship providers for them. That is fine. I am built for this.
+You already have dotfiles. Years of them — a `.config/` grown organically, a `~/.gitconfig` tuned by hand, a dotfiles repo you've been hauling between machines since long before you met me. That work is not dead weight. It is the accumulated memory of every machine you've ever configured, and I would be insulting you to ask that you rewrite it in Lisp.
 
-Drop any directory under `files/` in your home project and stow it onto your home directory with one line:
+Dotfiles stay dotfiles. I stow them exactly as they are.
+
+You drop each application's config into the repository as a package and stow it onto your home directory:
 
 ```lisp
 (define-home my-home
-  (stow "dotfiles")            ;; files/dotfiles/** -> ~/**, symlinked
-  (stow ".config" :to "~"))    ;; files/.config/** -> ~/.config/**, symlinked
+  :asset-root ".."             ;; machinery in linacs/, packages at the repo root
+  (stow "fish")                ;; <asset-root>/fish/.config/fish/** -> ~/.config/fish/**, symlinked
+  (stow "sway")                ;; <asset-root>/sway/.config/sway/** -> ~/.config/sway/**, symlinked
+  (stow "scripts"))            ;; <asset-root>/scripts/** -> ~/scripts/**, symlinked
 ```
 
-`files/` holds one directory per "package", mirroring where it should land under `~`:
+The asset root is the repository root itself: each package there carries its target path under `~` — `fish/.config/fish/config.fish` lands at `~/.config/fish/config.fish`, sway's at `~/.config/sway/config`, and the `linacs/` machinery lives beside them. Every entry is just a symlink, so nothing you already have is ever hidden from you:
 
 ```
-my-home/
-├── home.lisp                  # says (stow "dotfiles")
-└── files/
-    ├── dotfiles/              # Stows to ~/
-    │   ├── .gitconfig         #   -> ~/.gitconfig
-    │   └── .config/
-    │       ├── fish/
-    │       └── sway/
-    └── scripts/               # Another package -> ~/scripts/
-        └── my-thing.sh
+~/dotfiles/                    # the GNU-stow-compatible dotfiles repo
+├── linacs/                    # the machinery (the -C project root)
+│   └── home.lisp              #   the define-home form above
+├── fish/                      # stow package -> ~/
+│   └── .config/fish/config.fish    #   -> ~/.config/fish/config.fish
+├── sway/                      # stow package -> ~/
+│   └── .config/sway/config    #   -> ~/.config/sway/config
+└── scripts/                   # stow package -> ~/
+    └── my-thing.sh            #   -> ~/my-thing.sh
 ```
 
-Nothing in `files/` is touched until you say `(stow "pkg")` — that's what makes the mapping explicit and predictable. The `:stow` executor mirrors each package tree onto the target root (default `~`), folding whole directories into a single symlink when nothing exists there yet and recursing to merge file-by-file when the target directory already exists — the same folding/unfolding/conflict rules as GNU Stow, natively in Lisp, no external binary required. Plugins use it too: the security plugin stows `files/gpg/` onto `~/.gnupg/` and `files/firewalld/` onto `/etc/firewalld/`.
+Nothing is touched until you say `(stow "pkg")` — the mapping is explicit and predictable. The `:stow` executor mirrors each package tree onto the target root (default `~`), folding a whole directory into a single symlink when nothing exists there yet and recursing to merge file-by-file when the target directory already exists for real — the same folding/unfolding/conflict rules as GNU Stow, natively in Lisp, no external binary required. A real file already blocking a path shows up as a conflict in `linacs plan`, resolved with `(stow "pkg" :force t)`. The symlink farm stays your escape hatch: delete a symlink, edit the real file, keep going.
 
-**Most of your dotfile management will be stow.** Features and providers are for the things that need logic (package installation, service enablement, config generation). Everything else is a file under `files/` plus a one-line `(stow ...)`.
+Because every entry is a plain symlink, this is GNU-stow-compatible by construction — `stow -t ~ fish sway scripts`, or any other package by name, sees exactly the same trees I do. And when `-C` points at the `linacs/` machinery subfolder, `:asset-root ".."` lifts the sources up to the repository root, so the dotfiles repo stays a dotfiles repo, and I merely read it.
+
+**Most of your dotfile management will be stow.** Features and providers are for the things that need logic — package installation, service enablement, config generation, the system-level config that lives outside `~`. Everything else is a package directory under the asset root plus one `(stow ...)` line. Plugins ship files the same way: the security plugin stows `gpg/` onto `~/.gnupg/` and `firewalld/` onto `/etc/firewalld/`.
 
 ---
 
@@ -210,31 +215,54 @@ You write your own the same way. Drop a `linacs-*` ASDF system in your Quicklisp
 
 ## Project layout
 
+Three independent repositories, three jobs, plus the specification they all
+follow:
+
 ```
-├── linacs/                     I am here — the core engine
-│   ├── src/                    Resolution, execution, CLI
-│   │   ├── action-types/       25 built-in executors
-│   │   ├── pipeline.lisp       5-step pipeline
-│   │   ├── cli.lisp            12 CLI commands
-│   │   └── ...
-│   └── docs/
-│       ├── user-manual.md      Full user manual (I/you voice)
-│       └── diagnostics-design.md
-│
-├── linacs-home/                Your home definition
-│   ├── home.lisp               Your declaration
-│   ├── files/                  Stow-managed dotfiles
-│   ├── features/               Your feature overrides
-│   ├── providers/              Your provider overrides
-│   ├── catalogs/               Your package translations
-│   └── plugins/                Symlinks to plugins
-│
-├── linacs-plugins/             Community plugins
-│   ├── tools/linacs-security/  GPG + firewall
-│   ├── distributions/          Fedora, Arch detection
-│   └── desktops/               KDE Plasma, Sway, ...
-│
-└── AGENTS.md                   Complete specification (v1.0)
+linacs-home/              The user's home configuration — a GNU-stow-compatible
+│                         dotfiles repo. Machinery in linacs/, stow-able
+│                         packages at the repository root, each mirroring its
+│                         layout under ~ the GNU-stow way
+│                         (fish/.config/fish/config.fish -> ~/.config/fish/config.fish).
+│   ├── linacs/           home.lisp, profiles/, features/, providers/,
+│   │   └── plugins/      catalogs/, templates/, hooks/, plugins/
+│   ├── alacritty/        alacritty.toml
+│   ├── bashrc
+│   ├── emacs/            .emacs.d/
+│   ├── fish/             a stow package
+│   │   └── .config/
+│   │       └── fish/
+│   │           └── config.fish   -> ~/.config/fish/config.fish
+│   ├── gitconfig.tmpl
+│   ├── i3/               config
+│   ├── nvidia/           10-nvidia.conf
+│   ├── profile
+│   ├── ssh/              config
+│   ├── sway/             config
+│   ├── vim/              vimrc
+│   └── zshrc
+
+linacs-plugins/           Pre-written extensions — the reference implementations
+│                         for the ASDF plugin convention. Each is its own
+│                         linacs-* ASDF system, auto-discovered when present.
+│   ├── tools/
+│   │   ├── linacs-editor/
+│   │   ├── linacs-security/
+│   │   └── linacs-virtualisation/
+│   ├── distributions/
+│   │   └── linacs-fedora/
+│   └── desktops/
+│       └── linacs-kde-plasma/
+
+linacs/                   The app itself — an installed binary.
+    ├── src/              Resolution, execution, CLI
+    │   ├── action-types/         25 built-in executors
+    │   ├── pipeline.lisp         5-step pipeline
+    │   ├── cli.lisp              12 CLI commands
+    │   └── ...
+    └── docs/
+        ├── user-manual.md        Full user manual (I/you voice)
+
 ```
 
 ---
@@ -409,4 +437,4 @@ I discover it automatically on next run. No Makefile edit. No registration step.
 
 ## License
 
-MIT — LINACS Project
+ — GPL GNU General Public License v3.0 - LINACS Project
