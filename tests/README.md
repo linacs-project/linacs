@@ -10,7 +10,7 @@ tests/
 ├── package.lisp              # Test package definition
 ├── helpers.lisp              # Test utilities and fixtures
 ├── Makefile                  # Makefile-based runner (see below)
-├── setup.sh                  # Sets up a local SBCL/Quicklisp test env
+├── restart-menu.lisp         # Interactive restart-menu tests
 ├── actions/                  # Action identity, deduplication, ordering tests
 ├── api/                      # :linacs.api public-surface tests
 ├── cli/                      # CLI flag-parsing tests
@@ -20,26 +20,29 @@ tests/
 ├── features/                 # Feature graph resolution tests
 ├── pipeline/                 # Pipeline execution tests
 ├── privilege/                # Sudo/privilege handling tests
-└── profiles/                 # Profile metadata tests
+├── profiles/                 # Profile metadata tests
+└── providers/                # Provider registration/validation tests
 ```
 
-The canonical entry point is `run-all-tests.lisp` at the linacs project
-root, which loads the whole suite and prints a pass/fail summary. The
-`linacs-tests.asd` system definition registers every test file, so
-`asdf:load-system :linacs-tests` (or `make test`) runs the identical
-coverage.
+The `linacs-tests.asd` system definition is the single source of truth for
+what gets tested: every test file is registered there. Two thin runners
+load it and execute the whole suite:
+`run-all-tests.lisp` at the linacs project root (dev convenience) and
+`make test` from this directory (non-interactive, CI-friendly).
 
 ## Running Tests
 
-### Canonical: `run-all-tests.lisp` (from the linacs root)
+### `run-all-tests.lisp` (from the linacs root)
 
 ```bash
 cd linacs
 sbcl --load run-all-tests.lisp
 ```
 
-This loads LINACS, every test module, and runs the whole suite, printing a
-pass/fail summary. It is the single source of truth for what gets tested.
+A thin wrapper: it locates `linacs-tests.asd`, loads it (loading every
+registered test module), runs the whole suite, and prints a pass/fail
+summary. It exits 0 on success and 1 on failure, so it is usable in CI
+without make.
 
 ### Using ASDF
 
@@ -54,14 +57,15 @@ From a Lisp REPL:
 ;; Load the test system
 (asdf:load-system :linacs-tests)
 
-;; Run all tests (run-all-tests exercises every registered suite)
+;; Run all tests (every suite registered in the asd)
 (fiveam:run-all-tests)
 ```
 
 ### Using `make test`
 
-From the `linacs/tests` directory, `make test` runs the same suite via
-ASDF and exits non-zero if any check fails (usable in CI).
+From this (`linacs/tests`) directory, `make test` runs the same suite via
+ASDF and exits non-zero if any check fails (usable in CI). It is the
+non-interactive equivalent of `run-all-tests.lisp`.
 
 Note: the master suite is the `linacs-tests` symbol in the
 `linacs-tests` package. FiveAM's `run!` needs that symbol, not the
@@ -102,6 +106,13 @@ ros run --load run-all-tests.lisp
 - **disabled-actions.lisp**: Tests how `:disabled t` actions are handled
   under the `:prune-explicitly-disabled` trait
 - **hooks.lisp**: Tests `register-pipeline-hook` behavior
+- **project-root.lisp**: Tests `*project-root*` binding and `:project-root`
+  injection on provider actions (provider `files/` resolution with `-C`)
+
+### Providers Tests
+
+- **macros.lisp**: Tests `define-provider` argument validation
+  (strict `:for`/options/trailing-function-form convention)
 
 ### CLI Tests
 
@@ -171,11 +182,12 @@ Example:
 
 ## Test Utilities
 
-The test helpers provide useful utilities:
+`tests/helpers.lisp` provides the test utilities:
 
-- `reset-registries`: Clears all LINACS registries for clean test state
-- `make-fixture-home`: Creates a minimal home definition for testing
-- `fixture-facts`: Returns a set of fixture facts for testing
+- `reset-project-registries`: Clears all LINACS registries (fact probers,
+  features, providers, catalogs, profiles, pipeline hooks, DSL forms,
+  current-home state, provenance/action results) so each test starts from
+  a clean slate.
 
 ## Running in CI/CD
 
