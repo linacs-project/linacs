@@ -32,8 +32,9 @@
    #:file-discovery-load-error
    #:pipeline-aborted-by-hook
    #:dependency-cycle
-   #:retry #:skip #:abort-processing
-   #:use-first #:use-second
+    #:retry #:skip #:abort-processing
+    #:force
+    #:use-first #:use-second
    #:specify-provider #:skip-feature
    #:retry-with-sudo
    #:supply-value
@@ -226,7 +227,7 @@
     #:fact-prober-conflict #:missing-template-renderer #:file-discovery-load-error
     #:pipeline-aborted-by-hook #:dependency-cycle
     ;; restarts
-    #:retry #:skip #:abort-processing #:use-first #:use-second #:specify-provider
+    #:retry #:skip #:abort-processing #:force #:use-first #:use-second #:specify-provider
     #:skip-feature #:retry-with-sudo #:supply-value #:specify-renderer
     #:treat-as-static
     ;; interactive restart menu
@@ -262,7 +263,7 @@
     #:fact-prober-conflict #:missing-template-renderer #:file-discovery-load-error
     #:pipeline-aborted-by-hook #:dependency-cycle
     ;; restarts
-    #:retry #:skip #:abort-processing #:use-first #:use-second #:specify-provider
+    #:retry #:skip #:abort-processing #:force #:use-first #:use-second #:specify-provider
     #:skip-feature #:retry-with-sudo #:supply-value #:specify-renderer
     #:treat-as-static
     ;; interactive restart menu

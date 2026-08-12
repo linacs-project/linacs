@@ -19,6 +19,8 @@
 ;;;;
 ;;;;   (:action :stow :target "fish" :to "/etc/skel")   ; a different target root
 ;;;;   (:action :stow :target "fish-work" :from "fish") ; source dir name differs from identity
+;;;
+;;;   (:action :stow :target "fish" :force t)          ; overwrite blocking files/symlinks
 
 (in-package :linacs.core)
 
@@ -83,13 +85,18 @@ target root). Stops naturally at the first non-empty directory."
     (loop while (and dir (> (length dir) (length boundary)) (path-is-dir-p dir) (stow-rmdir-try dir))
           do (setf dir (stow-parent-dir dir)))))
 
-(defun stow-merge (source target mode)
+(defun stow-merge (source target mode &optional force-p)
   "Recursively fold/merge SOURCE onto TARGET. Returns T if something
 changed (or, in :check mode, would change). Signals EXECUTION-FAILURE on
 an unresolvable conflict -- an existing real file, or a symlink to
 something unrelated, blocking the merge -- regardless of MODE, since
 that's a static fact about the filesystem, not something :check should
-hide from you."
+hide from you. When FORCE-P is true, such a conflict is instead
+resolved by deleting the blocker and replacing it with the symlink
+(GNU stow --override semantics). The unfold branch -- TARGET is a
+symlink to another stowed package's directory -- is never affected by
+FORCE-P: that is cooperative overlap, not a conflict, and forcing it
+would destroy the other package's data."
   (cond
     ;; Nothing at all where TARGET should be: fold the whole subtree into
     ;; one symlink. This is the common case for a package's own leaf
@@ -123,29 +130,50 @@ hide from you."
              (stow-rm target)
              (stow-mkdir target)
              (dolist (name (dir-entries existing-dest))
-               (stow-merge (stow-join existing-dest name) (stow-join target name) :apply))
+               (stow-merge (stow-join existing-dest name) (stow-join target name) :apply force-p))
              (dolist (name (dir-entries source))
-               (stow-merge (stow-join source name) (stow-join target name) :apply))
+               (stow-merge (stow-join source name) (stow-join target name) :apply force-p))
              t)
             (:remove nil)))
          (t
-          (error 'execution-failure :action-type :stow :target target
-                 :underlying (format nil "~a is a symlink to ~a, which conflicts with stowing ~a"
-                                      target existing-dest source))))))
+          (if force-p
+              (case mode
+                (:check t)
+                (:apply
+                 (stow-rm target)
+                 (let ((parent (stow-parent-dir target)))
+                   (when parent (stow-mkdir parent)))
+                 (stow-ln source target)
+                 t)
+                (:remove nil))
+              (error 'execution-failure :action-type :stow :target target
+                     :underlying (format nil "~a is a symlink to ~a, which conflicts with stowing ~a"
+                                         target existing-dest source)))))))
 
     ;; TARGET is a real directory: recurse, merging each of SOURCE's entries.
     ((path-is-dir-p target)
      (let ((changed nil))
        (dolist (name (dir-entries source))
-         (when (stow-merge (stow-join source name) (stow-join target name) mode)
+         (when (stow-merge (stow-join source name) (stow-join target name) mode force-p)
            (setf changed t)))
        changed))
 
-    ;; TARGET is a real, plain file -- an unresolvable conflict.
+    ;; TARGET is a real, plain file -- a conflict, resolved by deletion and
+    ;; replacement only when FORCE-P is true.
     (t
-     (error 'execution-failure :action-type :stow :target target
-            :underlying (format nil "~a already exists and is not a symlink or directory; refusing to overwrite it"
-                                 target)))))
+     (if force-p
+         (case mode
+           (:check t)
+           (:apply
+            (stow-rm target)
+            (let ((parent (stow-parent-dir target)))
+              (when parent (stow-mkdir parent)))
+            (stow-ln source target)
+            t)
+           (:remove nil))
+         (error 'execution-failure :action-type :stow :target target
+                :underlying (format nil "~a already exists and is not a symlink or directory; refusing to overwrite it"
+                                    target))))))
 
 (defun stow-source-dir (action)
   "The absolute, canonicalized path to this action's package directory
@@ -156,13 +184,28 @@ remain valid regardless of the working directory at a later run."
          (pkg (or (getf action :from) (action-target action))))
     (string-right-trim "/" (format nil "~afiles/~a" abs-root pkg))))
 
+(defun stow-merge-interactive (source target mode force-p)
+  "Run STOW-MERGE, offering a FORCE restart that re-runs the merge with
+force semantics (GNU stow --override) when a conflict is signaled. This
+is the seam for the interactive menu's FORCE choice: on a conflict the
+user picks FORCE instead of RETRY/SKIP/ABORT, and the merge completes by
+deleting the blocker and symlinking over it. Returns STOW-MERGE's value:
+T if something changed (or, in :check mode, would change)."
+  (restart-case (stow-merge source target mode force-p)
+    (force ()
+      :report "Force overwrite the conflicting file/symlink"
+      (stow-merge source target mode t))))
+
 (defun execute-stow (action &key mode)
   (let* ((package-name (action-target action))
          (source (stow-source-dir action))
-         (target-root (string-right-trim "/" (expand-home (getf action :to "~")))))
+         (target-root (string-right-trim "/" (expand-home (getf action :to "~"))))
+         (force-p (getf action :force)))
     (case mode
-      (:check (report (if (stow-merge source target-root :check) :would-change :unchanged) :target package-name))
-      (:apply (let ((changed (stow-merge source target-root :apply)))
+      (:check (report (if (stow-merge-interactive source target-root :check force-p)
+                          :would-change :unchanged)
+                      :target package-name))
+      (:apply (let ((changed (stow-merge-interactive source target-root :apply force-p)))
                 (report (if changed :changed :unchanged) :target package-name)))
       (:remove (stow-merge source target-root :remove)
                (report :removed :target package-name)))))

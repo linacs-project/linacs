@@ -269,27 +269,43 @@ on, and ABORT-PROCESSING stops the whole run via the LINACS-ABORT catch."
                                (setf (gethash id *action-results*) (list :status :skipped))
                                (values nil :skipped))
                     :on-abort (lambda () (throw 'linacs-abort nil)))
-                 (handler-case
-                     (let ((result (funcall executor action :mode mode)))
-                       (let ((status (getf result :status)))
-                         (when (and mode (eq mode :apply))
-                           (unless status
-                             (setf status :applied))
-                           (setf (gethash id *action-results*) (list :status status)))
-                         (when *progress-reporter*
-                           (funcall *progress-reporter* action :after result))
-                         (values result status)))
-                   (linacs-error (e)
-                     (setf (gethash id *action-results*) (list :status :failed :error e))
-                     (when *progress-reporter*
-                       (funcall *progress-reporter* action :failed e))
-                     (error e))
-                   (error (e)
-                     (setf (gethash id *action-results*) (list :status :failed :error e))
-                     (when *progress-reporter*
-                       (funcall *progress-reporter* action :failed e))
-                     (error 'execution-failure
-                            :action-type (action-type action)
-                            :target (action-target action)
-                            :underlying e))))))
+                 (let ((reentered nil))
+                   (flet ((record-and-reraise (err)
+                            ;; Record the failure and re-signal, but only for
+                            ;; the FIRST signal. The guard keeps the re-signaled
+                            ;; condition from being re-caught by this same
+                            ;; handler-bind, which would loop forever.
+                            ;;
+                            ;; HANDLER-BIND (not HANDLER-CASE) is deliberate:
+                            ;; it never unwinds the protected form, so any
+                            ;; restarts the executor established (e.g. the
+                            ;; :stow FORCE restart) are still live when the
+                            ;; condition reaches the interactive handler at
+                            ;; signal time. HANDLER-CASE would have destroyed
+                            ;; them, making those restarts invisible to the
+                            ;; restart menu.
+                            (unless reentered
+                              (setf reentered t)
+                              (setf (gethash id *action-results*)
+                                    (list :status :failed :error err))
+                              (when *progress-reporter*
+                                (funcall *progress-reporter* action :failed err))
+                              (error err))))
+                     (handler-bind
+                         ((linacs-error #'record-and-reraise)
+                          (error (lambda (e)
+                                   (record-and-reraise
+                                    (make-condition 'execution-failure
+                                                    :action-type (action-type action)
+                                                    :target (action-target action)
+                                                    :underlying e)))))
+                       (let ((result (funcall executor action :mode mode)))
+                         (let ((status (getf result :status)))
+                           (when (and mode (eq mode :apply))
+                             (unless status
+                               (setf status :applied))
+                             (setf (gethash id *action-results*) (list :status status)))
+                           (when *progress-reporter*
+                             (funcall *progress-reporter* action :after result))
+                           (values result status)))))))))
       (run))))

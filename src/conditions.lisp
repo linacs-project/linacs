@@ -152,9 +152,10 @@ menu -- see EXECUTE-ACTION, %LOAD-LISP-FILE, and RESOLVE-SECRET-PROMPT."
 ;;; exit in the CLI, per-action failure handling in EXECUTE-PLAN.
 
 (defparameter *linacs-restart-descriptions*
-  '((retry . "Try again")
+  '(    (retry . "Try again")
     (skip . "Skip this action and continue")
     (abort-processing . "Stop processing")
+    (force . "Force overwrite the conflicting file/symlink")
     (use-first . "Keep definition A (the existing action)")
     (use-second . "Keep definition B (the new action)")
     (specify-provider . "Manually select a provider")

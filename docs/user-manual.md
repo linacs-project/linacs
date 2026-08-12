@@ -950,7 +950,24 @@ has unrelated content in it, and never the target root itself:
 
 An existing *real* file or an unrelated symlink blocking a path this
 package needs is a conflict, reported clearly rather than silently
-overwritten — same as real stow's own safety behavior.
+overwritten — same as real stow's own safety behavior. To override it,
+give the action `:force t` (GNU stow's `--override` semantics): the
+blocker is deleted and replaced with the symlink, in `:apply` mode;
+`plan`/`diff` report `:would-change` instead of erroring:
+
+```lisp
+;; fish's .config/fish/config.fish was hand-managed before linacs took
+;; over -- say so, and the manual file is replaced by the symlink
+(stow "fish" :force t)
+```
+
+On an interactive terminal, hitting a conflict also offers a `FORCE`
+choice in the restart menu alongside `RETRY`/`SKIP`/`ABORT`, so you can
+override a single conflict without changing the config. `:force t` only
+ever deletes *blockers* (real files, unrelated symlinks); it never
+destroys the cooperative fold another stowed package created — two
+packages sharing a directory still merge file-by-file, exactly as
+described above.
 
 ### 5.7 `package`
 

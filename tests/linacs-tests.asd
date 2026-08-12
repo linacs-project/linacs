@@ -55,12 +55,13 @@
                :serial t
                :components
                ((:file "metadata")))
-      (:module "executors"
-              :serial t
-              :components
-              ((:file "copy-file")
-               (:file "ensure-dir")
-               (:file "symlink")
-               (:file "service")
-               (:file "config-lines")
-               (:file "package-action")))))
+       (:module "executors"
+               :serial t
+               :components
+               ((:file "copy-file")
+                (:file "ensure-dir")
+                (:file "symlink")
+                (:file "stow")
+                (:file "service")
+                (:file "config-lines")
+                (:file "package-action")))))
