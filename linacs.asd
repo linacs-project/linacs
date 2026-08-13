@@ -66,6 +66,7 @@
                          (:file "cron")
                          (:file "command")
                          (:file "clone")
+                         (:file "repository")
                          (:file "stow")))
                (:file "pipeline")
                (:file "privilege")

@@ -97,6 +97,10 @@
    #:dedup-actions
    #:order-actions
    #:register-package-via-handler
+   #:register-repository-method
+   #:find-repository-method
+   #:*repository-methods*
+   #:resolve-repository-prerequisites
    #:*provenance*
    #:register-provenance
    #:action-provenance
@@ -171,9 +175,10 @@
    #:locale
    #:firewall
    #:cron
-   #:command
-   #:clone
-   #:stow
+#:command
+    #:clone
+    #:stow
+    #:repository
    #:*current-home-actions*
    #:*current-home-name*
    #:*current-home-traits*
@@ -212,11 +217,12 @@
     #:*current-home-actions*
     #:file #:symlink #:secret #:env-var #:config-lines #:config-ini #:config-env
     #:user #:group #:authorized-key #:permissions #:mount #:sysctl
-    #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow
+    #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow #:repository
     ;; registration
     #:define-feature #:register-feature #:define-provider #:register-provider
     #:define-catalog #:register-catalog #:register-fact-prober #:declare-fact
     #:register-action-type #:register-package-via-handler #:register-pipeline-hook
+    #:register-repository-method
     #:register-sudo-requiring-action-type #:register-non-privileged-package-via
     ;; authoring helpers
     #:fact #:fact* #:fact-known-p #:feature-custom #:catalog-lookup
@@ -248,11 +254,12 @@
     #:*current-home-actions*
     #:file #:symlink #:secret #:env-var #:config-lines #:config-ini #:config-env
     #:user #:group #:authorized-key #:permissions #:mount #:sysctl
-    #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow
+    #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow #:repository
     ;; registration
     #:define-feature #:register-feature #:define-provider #:register-provider
     #:define-catalog #:register-catalog #:register-fact-prober #:declare-fact
     #:register-action-type #:register-package-via-handler #:register-pipeline-hook
+    #:register-repository-method
     #:register-sudo-requiring-action-type #:register-non-privileged-package-via
     ;; authoring helpers
     #:fact #:fact* #:fact-known-p #:feature-custom #:catalog-lookup

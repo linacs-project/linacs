@@ -11,7 +11,8 @@ lookup to avoid cross-package dependency at compile time."
       (dolist (sym-name '("*FACT-PROBERS*" "*FACT-METADATA*"
                           "*FEATURE-REGISTRY*"
                           "*PROVIDERS*" "*CATALOGS*" "*PROFILES*"
-                          "*PIPELINE-HOOKS*" "*DSL-FORMS*"))
+                          "*PIPELINE-HOOKS*" "*DSL-FORMS*"
+                          "*REPOSITORY-METHODS*"))
         (let ((sym (find-symbol sym-name core)))
           (when (and sym (symbol-value sym))
             (clrhash (symbol-value sym)))))

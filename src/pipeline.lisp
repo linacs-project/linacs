@@ -154,6 +154,7 @@ locate their sources under it regardless of the invocation cwd."
          (all-actions (append user-actions provider-actions)))
     (declare (ignore ignored))
     (resolve-package-vias all-actions)
+    (setf all-actions (resolve-repository-prerequisites all-actions))
     (run-hooks :after-resolve *facts* all-actions)
     (let* ((deduped (dedup-actions all-actions))
            (ordered (order-actions deduped)))

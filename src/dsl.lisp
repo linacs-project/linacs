@@ -51,7 +51,7 @@ documentation for `linacs list`; never consulted by resolution or execution.")
   '("FILE" "DIRECTORY" "SYMLINK" "SECRET" "ENV-VAR" "CONFIG-LINES" "CONFIG-INI"
     "CONFIG-ENV" "USER" "GROUP" "AUTHORIZED-KEY" "PERMISSIONS" "MOUNT" "SYSCTL"
     "KERNEL-MODULE" "HOSTNAME" "LOCALE" "FIREWALL" "CRON" "COMMAND" "CLONE"
-    "STOW" "PACKAGE")
+    "STOW" "PACKAGE" "REPOSITORY")
   "The home-level convenience forms LINACS itself defines and re-exports
 through :linacs.api. Re-registered into *DSL-FORMS* at bootstrap, after
 RESET-PROJECT-REGISTRIES clears the registry.")
@@ -254,3 +254,4 @@ since a user reached for the escape hatch deliberately."
 (define-action-macro command        :command       "user:command")
 (define-action-macro clone          :clone         "user:clone")
 (define-action-macro stow           :stow          "user:stow")
+(define-action-macro repository     :repository    "user:repository")

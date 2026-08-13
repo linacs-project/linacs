@@ -170,6 +170,67 @@ to the same cons cells (e.g. the ordered action list in CMD-PLAN)."
       (let ((via (resolve-package-via action)))
         (nconc action (list :via via))))))
 
+(defun repository-spec-plist (spec)
+  "Normalize the value CATALOG-LOOKUP returns for a :repositories entry
+into a spec plist (:method <kw> :id <str>), or NIL.
+Entries registered as (:fedora (:method :dnf-copr :id \"...\")) come back
+wrapped in a one-element list; the dotted (:fedora . (:method ...)) form
+arrives as the bare plist. String values (the catalog's no-entry fallback,
+and ordinary distro string mappings) are not repository specs and yield NIL."
+  (cond
+    ((and (consp spec) (consp (car spec))) (car spec))
+    ((and (consp spec) (keywordp (car spec))) spec)
+    (t nil)))
+
+(defun resolve-repository-prerequisites (actions)
+  "Walk ACTIONS and, for every :package action whose :via is :system, consult
+the :repositories catalog for the current distro: when the canonical target
+maps to a repository spec plist (:method <kw> :id <str>), inject a
+:repository action ahead of the package and make the package depend on it,
+so the repository is configured before the install.
+
+Mirrors RESOLVE-PACKAGE-VIAS (which injects :via for packages missing it):
+called from RESOLVE-PLAN right after it, so :via is already decided and only
+:system packages -- the ones that draw from distro repositories -- get a
+prerequisite. Flatpak/pip/npm handle their own remotes and never appear here.
+
+The catalog's string fallback (catalog-lookup returns the keyword's name
+when no entry exists) is treated as 'no repository needed' -- those packages
+behave exactly as before. A spec is only honored when it is a plist carrying
+both :method and :id. A catalog entry written as (:fedora (:method ...)) is
+returned by catalog-lookup wrapped in a one-element list, while the dotted
+(:fedora . (:method ...)) form arrives unwrapped -- the normalizer in
+REPOSITORY-SPEC-PLIST accepts both. String package targets (e.g.
+(package \"vim\")) are skipped, since the :repositories catalog is keyed by
+canonical keyword.
+
+Any :depends-on the package already carries is preserved: the repository
+identity is appended, never clobbering provider/user edges."
+  (let ((injected '()))
+    (dolist (action actions)
+      (when (and (eq (action-type action) :package)
+                 (eq (getf action :via) :system))
+        (let* ((target (action-target action))
+               (spec (repository-spec-plist
+                      (catalog-lookup :repositories target (fact :os)))))
+          (when (and (consp spec)
+                     (getf spec :method)
+                     (getf spec :id))
+            (let* ((id (getf spec :id))
+                   (method (getf spec :method))
+                   (repo-id (list* :repository method id))
+                   (repo-action (list :action :repository
+                                      :target id
+                                      :method method
+                                      :priority :provider
+                                      :source (format nil "repository prerequisite for ~a" target))))
+              (push repo-action injected)
+              (let ((existing (getf action :depends-on)))
+                (if existing
+                    (setf (getf action :depends-on) (append existing (list repo-id)))
+                    (nconc action (list :depends-on (list repo-id))))))))))
+    (append injected actions)))
+
 (defun dedup-actions (actions)
   "Deduplicate ACTIONS by identity. :priority :user (highest) beats
 :priority :provider. :force t wins any tie regardless of priority. Two
