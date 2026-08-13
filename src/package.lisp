@@ -186,6 +186,7 @@
    ;; cli
    #:main
    #:parse-args
+   #:cmd-init
    #:cli-opts
    #:make-cli-opts
    #:cli-opts-root
@@ -199,6 +200,7 @@
    #:cli-opts-quiet
    #:cli-opts-sudo-password-stdin
    #:cli-opts-sudo-reset
+   #:cli-opts-example
    #:cli-opts-help))
 
 (defpackage :linacs.api

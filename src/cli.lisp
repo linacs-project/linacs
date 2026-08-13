@@ -21,6 +21,7 @@
   (root ".") (platform nil) (profile nil) (provider-overrides '())
   (dry-run nil) (continue-on-error nil) (output nil) (verbosity 1) (quiet nil)
   (sudo-password-stdin nil) (sudo-reset nil)
+  (example nil)
   (help nil))
 
 (defun parse-args (args)
@@ -63,6 +64,7 @@ command's help instead of guessing what the person meant."
                   ((string= a "--sudo-password-stdin") (setf (cli-opts-sudo-password-stdin opts) t))
                   ((string= a "--sudo-reset") (setf (cli-opts-sudo-reset opts) t))
                   ((string= a "--quiet") (setf (cli-opts-quiet opts) t) (setf (cli-opts-verbosity opts) 0))
+                  ((string= a "--example") (setf (cli-opts-example opts) t))
                   ((and (> (length a) 0) (char= (char a 0) #\-)) (push a unknown))
                  (t nil)))) ; a bare positional argument -- no command currently takes one, so ignore it
     (values opts (nreverse unknown))))
@@ -803,15 +805,79 @@ precedence over the request's own :via."
               checks-passed checks-warn checks-failed)
       (when (> checks-failed 0) (uiop:quit 1)))))
 
+(defun write-file-if-absent (path content)
+  "Write CONTENT verbatim to PATH unless it already exists. Existing files
+are kept (never clobbered), so `linacs init` is idempotent even in --example
+mode."
+  (if (probe-file path)
+      (linacs.log:warn* "Keeping existing ~a" path)
+      (progn
+        (with-open-file (s path :direction :output :if-exists :supersede)
+          (write-string content s))
+        (linacs.log:info "Wrote ~a" path))))
+
+(defun seed-example-project (root)
+  "Scaffold a tiny working project matching user-manual §2: a :shell feature
+with a single :bash provider, a :packages catalog, a bashrc asset, and a
+home.lisp that pulls the feature in. None of the files is overwritten if it
+already exists."
+  (write-file-if-absent
+   (merge-pathnames "home.lisp" root)
+   ";;;; home.lisp
+(define-home my-home
+  :traits (:prune-explicitly-disabled)
+  (use-feature :shell))
+")
+  (write-file-if-absent
+   (merge-pathnames "features/shell.lisp" root)
+   ";;;; features/shell.lisp
+(in-package :linacs.api)
+
+(define-feature :shell
+  :description \"Login shell and dotfiles\"
+  :requires nil)
+")
+  (write-file-if-absent
+   (merge-pathnames "providers/shell.lisp" root)
+   ";;;; providers/shell.lisp
+(in-package :linacs.api)
+
+(define-provider :bash :for :shell
+  (lambda (facts)
+    (declare (ignore facts))
+    (list
+      '(:action :package :target :bash :via :system)
+      '(:action :copy-file :to \"~/.bashrc\" :from \"bashrc\"))))
+")
+  (write-file-if-absent
+   (merge-pathnames "catalogs/packages.lisp" root)
+   ";;;; catalogs/packages.lisp
+(in-package :linacs.api)
+
+(define-catalog :packages
+  (:bash (:fedora . \"bash\") (:ubuntu . \"bash\") (:arch . \"bash\")))
+")
+  (write-file-if-absent
+   (merge-pathnames "bashrc" root)
+   ";; Sample ~/.bashrc seeded by `linacs init --example`
+# Add your own aliases and settings below.
+"))
+
 (defun cmd-init (opts)
   (let ((root (uiop:ensure-directory-pathname (cli-opts-root opts))))
     (dolist (d *conventional-directories*)
       (ensure-directories-exist (merge-pathnames (make-pathname :directory (list :relative d)) root)))
-    (let ((home-file (merge-pathnames "home.lisp" root)))
-      (unless (probe-file home-file)
-        (with-open-file (s home-file :direction :output)
-          (format s ";;;; home.lisp~%(define-home my-home~%  :traits (:prune-explicitly-disabled)~%  (package-preference :system))~%"))))
-    (format t "Initialized LINACS project at ~a~%" root)))
+    (if (cli-opts-example opts)
+        (seed-example-project root)
+        (write-file-if-absent
+         (merge-pathnames "home.lisp" root)
+         ";;;; home.lisp
+(define-home my-home
+  :traits (:prune-explicitly-disabled)
+  (package-preference :system))
+"))
+    (format t "Initialized LINACS project at ~a~%" root)
+    (format t "For a fuller multi-machine example (profiles, templates, plugins, stow layout),~%  see the linacs-home project -- a sibling of the linacs repo.~%")))
 
 (defun cmd-version (opts)
   (declare (ignore opts))
@@ -838,6 +904,7 @@ precedence over the request's own :via."
     (:sudo-password-stdin "--sudo-password-stdin"
                "Read sudo password from stdin before resolving")
     (:sudo-reset "--sudo-reset"      "Run `sudo -k` after the command finishes")
+    (:example  "--example"           "Seed a tiny working :shell example project instead of empty dirs (init)")
     (:help     "-h, --help"          "Show this command's help and exit")))
 
 (defparameter *command-specs*
@@ -889,10 +956,11 @@ precedence over the request's own :via."
           :summary "Diagnose the environment and provider coverage"
           :options '(:root :profile :provider :platform :verbose :quiet :help)
           :examples '("linacs doctor -C ~/my-home --profile work-laptop"))
-   (list :name "init" :fn #'cmd-init
+(list :name "init" :fn #'cmd-init
          :summary "Scaffold a new project"
-         :options '(:root :help)
-         :examples '("linacs init -C ~/my-home"))
+         :options '(:root :example :help)
+         :examples '("linacs init -C ~/my-home"
+                     "linacs init -C ~/my-home --example   # seed a tiny working :shell project"))
    (list :name "version" :fn #'cmd-version
          :summary "Print the LINACS version"
          :options '(:help)

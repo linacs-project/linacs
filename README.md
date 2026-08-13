@@ -402,7 +402,7 @@ cd linacs
 
 # Scaffold your home
 mkdir my-home && cd my-home
-linacs init
+linacs init            # empty scaffold, or --example for a tiny working one
 
 # Edit home.lisp, then:
 linacs plan         # What will I do?

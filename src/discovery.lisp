@@ -22,14 +22,20 @@
 auto-loaded, in this order, before home.lisp.")
 
 (defun %load-lisp-file (path)
-  (handler-case (load path)
-    (linacs-error (e) (error e))
-    (error (e)
-      (with-linacs-restarts
-          (:on-retry (lambda () (%load-lisp-file path))
-           :on-skip (lambda () (linacs.log:warn* "Skipping ~a" path) nil)
-           :on-abort (lambda () (throw 'linacs-abort nil)))
-        (error 'file-discovery-load-error :path path :underlying e)))))
+  "Load a project-local .lisp file. Project files are read in the
+:linacs.api package (see the Packages section of AGENTS.md): the file's own
+(in-package ...) form, when present, still wins; without one, the DSL is
+available unqualified because *PACKAGE* starts as :linacs.api rather than
+whatever package the CLI happened to be entered from (e.g. CL-USER)."
+  (let ((*package* (or (find-package :linacs.api) *package*)))
+    (handler-case (load path)
+      (linacs-error (e) (error e))
+      (error (e)
+        (with-linacs-restarts
+            (:on-retry (lambda () (%load-lisp-file path))
+             :on-skip (lambda () (linacs.log:warn* "Skipping ~a" path) nil)
+             :on-abort (lambda () (throw 'linacs-abort nil)))
+          (error 'file-discovery-load-error :path path :underlying e))))))
 
 (defun collect-lisp-files-recursively (dir)
   "Recursively collect all .lisp files under DIR, alphabetically by full

@@ -117,6 +117,16 @@ I'll create:
 Everything else is empty. That's fine — an empty home is a valid home,
 it just doesn't do anything yet.
 
+Don't want to type the whole of §2.2–§2.4 yourself? `--example` seeds a
+tiny working `:shell` project for you (feature, provider, catalog, a
+`bashrc`, and a `home.lisp` that uses the feature) — the §2.2–§2.4 files
+below, already written:
+
+```sh
+linacs init -C ~/my-home --example
+linacs plan -C ~/my-home       # should resolve 2 actions
+```
+
 ### 2.2 Step 2 — decide what "shell" means to you
 
 Say you want me to manage your shell. First, tell me it's a *capability*
@@ -2086,6 +2096,7 @@ linacs doctor -C ~/my-home --profile work-laptop))
 
 ```sh
 linacs init -C ~/my-home))
+linacs init -C ~/my-home --example))   # seed a tiny working :shell project
 ```
 
 **Global options, usable on (almost) any command:**

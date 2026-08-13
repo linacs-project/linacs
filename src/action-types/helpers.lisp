@@ -41,8 +41,15 @@ runs `sudo linacs` out of habit; linacs itself never asks you to."
         path)))
 
 (defun read-file-string (path)
-  (when (probe-file path)
-    (uiop:read-file-string path)))
+  "Contents of PATH, or NIL when it cannot be read (missing file, dangling
+symlink -- SBCL's PROBE-FILE returns the path for one but opening it fails --
+or unreadable). Executors default the NIL to \"\" and treat the target as
+absent, which is what :check mode wants: a target that cannot be read is
+something the plan would (re)write."
+  (handler-case
+      (when (probe-file path)
+        (uiop:read-file-string path))
+    (error () nil)))
 
 (defun write-file-string (path content)
   (ensure-directories-exist path)

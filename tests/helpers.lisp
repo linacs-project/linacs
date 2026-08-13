@@ -32,3 +32,22 @@ lookup to avoid cross-package dependency at compile time."
 ;; Master suite that collects all test suites as children
 (def-suite linacs-tests
   :description "LINACS master test suite")
+
+;; Scratch-directory helpers shared by filesystem fixtures in several suites.
+(defun make-scratch-dir (&optional (prefix "linacs-test"))
+  "Create and return a fresh scratch directory under the system temp dir."
+  (let ((dir (merge-pathnames
+              (format nil "~a-~a-~a/"
+                      prefix
+                      (string-downcase (string (gensym)))
+                      (random 1000000))
+              (uiop:temporary-directory))))
+    (ensure-directories-exist dir)
+    dir))
+
+(defmacro with-scratch-dir ((var) &body body)
+  "Bind VAR to a fresh scratch directory for the duration of BODY, then
+delete it."
+  `(let ((,var (make-scratch-dir)))
+     (unwind-protect (progn ,@body)
+       (uiop:delete-directory-tree ,var :validate t :if-does-not-exist :ignore))))

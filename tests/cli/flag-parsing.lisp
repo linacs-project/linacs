@@ -113,3 +113,22 @@
       (linacs.core:parse-args '("--platform" "fedora"))
     (is (string= (linacs.core:cli-opts-platform opts) "fedora"))
     (is-false unknown)))
+
+(def-test parse-example-flag ()
+  "--example sets cli-opts-example to T and is not reported unknown"
+  (multiple-value-bind (opts unknown)
+      (linacs.core:parse-args '("--example"))
+    (is (linacs.core:cli-opts-example opts))
+    (is-false unknown)))
+
+(def-test parse-example-flag-with-root ()
+  "--example coexists with -C"
+  (multiple-value-bind (opts unknown)
+      (linacs.core:parse-args '("--example" "-C" "/tmp/my-home"))
+    (is (linacs.core:cli-opts-example opts))
+    (is (equal (linacs.core:cli-opts-root opts) "/tmp/my-home"))
+    (is-false unknown)))
+
+(def-test parse-example-flag-default ()
+  "Default cli-opts has example as NIL"
+  (is-false (linacs.core:cli-opts-example (linacs.core:make-cli-opts))))

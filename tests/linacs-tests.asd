@@ -43,7 +43,8 @@
       (:module "cli"
                :serial t
                :components
-               ((:file "flag-parsing")))
+               ((:file "flag-parsing")
+                (:file "init")))
       (:module "facts"
                :serial t
                :components
