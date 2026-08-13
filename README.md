@@ -298,8 +298,11 @@ linacs <command> [options]
 | `-n, --dry-run` | Show changes without executing them |
 | `--continue` | Keep going after a failed action |
 | `-o, --output FILE` | Write output to FILE (for `export`) |
+| `--sudo-password-stdin` | Read the sudo password from stdin before resolving |
+| `--sudo-reset` | Run `sudo -k` after the command finishes |
 | `-v, --verbose` | Increase verbosity (repeatable: `-v`, `-vv`, `-vvv`) |
 | `--quiet` | Only show errors |
+| `-h, --help` | Show help and exit |
 
 ## What you see when you run me
 

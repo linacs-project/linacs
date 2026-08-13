@@ -18,8 +18,6 @@
 
 ## 1. Installing LINACS
 
-*Part of the Getting Started guide — from the original manual*
-
 Hello. I'm LINACS — Lisp Declarative Linux — and this is the manual I wish
 someone had handed you on day one. I'm going to talk to you directly
 through this whole manual: when I say "I", I mean the tool you're about
@@ -86,9 +84,28 @@ linacs --help
 
 ## 2. Building Your First Home Project
 
-Let's actually do this.
+There are two ways to start, and which one is right depends on where you
+already are:
 
-### 2.1 Step 1 — scaffold
+- **Path A — starting from scratch.** No dotfiles repo yet, or you want
+  your machine's config declared inside LINACS from day one. You scaffold
+  a project and build up a small feature/provider/catalog stack
+  (§2.1–§2.6).
+- **Path B — you already have a dotfiles repo.** Years of `.config/`, a
+  hand-tuned `~/.bashrc`, a repo you've hauled across machines. You keep
+  it exactly as it is and add a small `linacs/` machinery folder beside
+  it. Everything under the repo root gets stowed onto your home as
+  symlinks (§2.7–§2.12).
+
+Both end with the same loop: `linacs plan` to see what would happen,
+`linacs apply` to make it happen. Path B is the one most people actually
+want — read it at least once even if you're starting fresh, because
+pointing me at a real dotfiles repo is the difference between "declaring
+a new language" and "adopting what you already have."
+
+### Path A — starting from scratch
+
+#### 2.1 Step 1 — scaffold
 
 ```sh
 linacs init -C ~/my-home
@@ -107,34 +124,36 @@ I'll create:
 └── hooks/
 ```
 
-`home.lisp` starts out about as small as it can be:
+`home.lisp` starts about as small as it can be:
 
 ```lisp
 (define-home my-home
-  :traits (:prune-explicitly-disabled))
+  :traits (:prune-explicitly-disabled)
+  (package-preference :system))
 ```
 
-Everything else is empty. That's fine — an empty home is a valid home,
-it just doesn't do anything yet.
+The `:traits` line opts into explicit removal — `:disabled t` actions are
+actually uninstalled rather than just skipped (§5.20). The
+`package-preference :system` line is my default package auto-selection
+chain: any package you declare without an explicit `:via` goes through
+your system package manager (§5.7). Everything else is empty, and that's
+fine — an empty home is a valid home, it just doesn't do anything yet.
 
-Don't want to type the whole of §2.2–§2.4 yourself? `--example` seeds a
-tiny working `:shell` project for you (feature, provider, catalog, a
-`bashrc`, and a `home.lisp` that uses the feature) — the §2.2–§2.4 files
-below, already written:
+Don't want to type the whole of §2.2–§2.5 yourself? `--example` seeds a
+tiny working `:shell` project for you — feature, provider, catalog, a
+`bashrc`, and a `home.lisp` that uses the feature, already written:
 
 ```sh
 linacs init -C ~/my-home --example
 linacs plan -C ~/my-home       # should resolve 2 actions
 ```
 
-### 2.2 Step 2 — decide what "shell" means to you
+#### 2.2 Step 2 — decide what "shell" means to you
 
 Say you want me to manage your shell. First, tell me it's a *capability*
 that exists, in `features/shell.lisp`:
 
 ```lisp
-(in-package :linacs.api)
-
 (define-feature :shell
   :description "Login shell and dotfiles"
   :requires nil)
@@ -145,8 +164,6 @@ same file — I don't care which of the six directories a registration form
 lives in, as long as it's one of them):
 
 ```lisp
-(in-package :linacs.api)
-
 (define-provider :bash :for :shell
   (lambda (facts)
     (declare (ignore facts))
@@ -155,6 +172,12 @@ lives in, as long as it's one of them):
       '(:action :copy-file :to "~/.bashrc" :from "bashrc"))))
 ```
 
+Two notes on the file headers you'll see in examples. Project files are
+read in the `:linacs.api` package, so the DSL is available unqualified
+either way: an explicit `(in-package :linacs.api)` is harmless (and it's
+what `--example` writes), but leaving it off works too. The one exception
+is templates, which live in the `:linacs-templates` package — see §5.22.
+
 Drop your actual `.bashrc` content at `bashrc` in your project root —
 this is where every `:from "..."` path in a convenience form resolves by
 default. The asset root (default: the project root; override it per home
@@ -162,15 +185,13 @@ with `:asset-root`, e.g. `".."` to point at the parent of a `-C` machinery
 directory) is the single place file-related executors read their sources
 from.
 
-### 2.3 Step 3 — teach me your distro's package names
+#### 2.3 Step 3 — teach me your distro's package names
 
 `:target :bash` above is a canonical name, not necessarily a real package
 name. Some distros call it something else. Tell me the mapping in
 `catalogs/packages.lisp`:
 
 ```lisp
-(in-package :linacs.api)
-
 (define-catalog :packages
   (:bash (:fedora . "bash") (:ubuntu . "bash") (:arch . "bash")))
 ```
@@ -179,12 +200,13 @@ If I ever hit a canonical name that isn't in the catalog, I don't fail —
 I just fall back to using the keyword's name as-is (`:bash` → `"bash"`),
 so starting without a catalog entry for every single package is fine.
 
-### 2.4 Step 4 — wire it into your home
+#### 2.4 Step 4 — wire it into your home
 
 ```lisp
 ;; home.lisp
 (define-home my-home
   :traits (:prune-explicitly-disabled)
+  (package-preference :system)
   (use-feature :shell))
 ```
 
@@ -198,26 +220,34 @@ linacs plan -C ~/my-home
 You should see something like:
 
 ```
-Resolved plan for MY-HOME:
-  PACKAGE bash
-  COPY-FILE ~/.bashrc
-2 action(s).
+Resolved plan for MY-HOME (traits: (PRUNE-EXPLICITLY-DISABLED)):
+
+  STATUS  TYPE       TARGET      VIA
+  ------  ---------  ----------  ------
+  [+]     package    bash        system
+  [+]     copy-file  ~/.bashrc
+
+2 action(s): 2 to apply, 0 already present
+[+] apply  [!] already present  [x] remove  [-] disabled
 ```
 
-Nothing has touched your filesystem yet — `plan` always runs in check
-mode. When you're happy:
+(On a color terminal the glyphs are tinted — `[+]` yellow, `[!]` yellow,
+`[x]` red. The columns and counts are what matter here.) Nothing has
+touched your filesystem yet — `plan` always runs in check mode. When
+you're happy:
 
 ```sh
 linacs apply -C ~/my-home
 ```
 
-Don't put `sudo` in front of that. Every action that genuinely needs
-root (installing that `bash` package, for instance) escalates on its own
-for just that one step and may prompt you for your password right then —
-running the whole thing under `sudo` instead would reset `~` to root's
-home directory and isn't needed for anything linacs does.
+Don't put `sudo` in front of that. If the plan needs root anywhere
+(installing that `bash` package, for instance), I prompt you for your
+password **once, up front**, cache it for the run, and use it only for
+the individual commands that genuinely need it — never for the whole
+process. Running everything under `sudo` instead would reset `~` to
+root's home directory and isn't needed for anything I do.
 
-### 2.5 Step 5 — add a second machine
+#### 2.5 Step 5 — add a second machine
 
 Say you also want zsh at work. Add a second provider:
 
@@ -250,9 +280,11 @@ linacs plan -C ~/my-home --profile work      # -> zsh
 linacs plan -C ~/my-home --profile personal  # -> bash
 ```
 
-Same `home.lisp`, different outcome, purely from the Fact.
+Same `home.lisp`, different outcome, purely from the Fact. `:work-p` is a
+fact only your profile sets, so declare it once with `declare-fact` and
+I'll stop warning "possible typo?" on every run — see §5.14.
 
-### 2.6 Step 6 — check before you trust
+#### 2.6 Step 6 — check before you trust
 
 Two commands exist specifically so you never have to find out about a
 mistake via `apply`:
@@ -267,10 +299,156 @@ plugin fails to load. `check` runs the whole resolution pipeline (steps
 0–4) and stops before step 5, so you find out about a missing provider, a
 conflicting action, or a dependency cycle without any risk to your system.
 
-That's the whole loop. Everything past this point in the manual is
-reference material for when you want to do something more specific:
-secrets, templates, removal, cross-action dependencies, pipeline hooks,
-and so on.
+That's Path A's whole loop.
+
+### Path B — you already have a dotfiles repo
+
+This is where I shine. GNU Stow is my backbone: the `:stow` executor
+mirrors a directory tree onto your home as symlinks, natively in Lisp —
+no `stow` binary, no hand-rolled `ln` scripts, and nothing you already
+own is hidden from you.
+
+#### 2.7 Step 1 — keep your repo a dotfiles repo
+
+Every stow-able package stays at the repository root; all LINACS
+machinery lives in a `linacs/` subfolder that acts as the project root:
+
+```
+~/dotfiles/                          # the GNU-stow-compatible dotfiles repo
+├── linacs/                          # the machinery (the -C project root)
+│   └── home.lisp                    #   the define-home form
+├── bashrc                           #   -> ~/.bashrc      (a plain file asset)
+├── fish/                            # stow package -> ~/
+│   └── .config/fish/config.fish     #   -> ~/.config/fish/config.fish
+├── sway/                            # stow package -> ~/
+│   └── .config/sway/config          #   -> ~/.config/sway/config
+└── scripts/                         # stow package -> ~/
+    └── my-thing.sh                  #   -> ~/my-thing.sh
+```
+
+Each package mirrors its layout under `~`: `fish/.config/fish/config.fish`
+lands at `~/.config/fish/config.fish`. Every entry is a symlink, so
+nothing you already have is ever hidden from you — delete a symlink and
+you're back to the real file.
+
+#### 2.8 Step 2 — add the machinery
+
+Point `init` at a new (or existing) `linacs/` subfolder. It creates the
+six conventional directories and `home.lisp`, and touches nothing else in
+the repo:
+
+```sh
+mkdir -p ~/dotfiles                     # or: git clone your existing repo
+linacs init -C ~/dotfiles/linacs
+```
+
+#### 2.9 Step 3 — tell me where the packages live
+
+Because the machinery is one level down, file and stow sources resolve
+one level up. Declare that once in `linacs/home.lisp`:
+
+```lisp
+;; linacs/home.lisp
+(define-home my-dotfiles
+  :traits (:prune-explicitly-disabled)
+  :asset-root ".."            ;; machinery in linacs/, packages at the repo root
+  (package-preference :system))
+```
+
+Then say which packages to stow. Each line mirrors a whole tree:
+
+```lisp
+(stow "fish")                 ;; <repo>/fish/.config/fish/** -> ~/.config/fish/**
+(stow "sway")                 ;; <repo>/sway/.config/sway/** -> ~/.config/sway/**
+(stow "scripts")              ;; <repo>/scripts/** -> ~/scripts/**
+```
+
+Plain files that aren't a package tree use the ordinary `file` form —
+`(file "~/.bashrc" :from "bashrc")` resolves to `<repo>/bashrc`.
+
+`:asset-root` is worth spelling out: it's the single place file-related
+executors read their sources from. Default is the project root (Path A:
+assets live right next to `home.lisp`). `".."` lifts it to the repo root
+when the machinery lives in a subfolder. See §5.1 for the formal
+definition and §5.6 for the full `stow` story.
+
+#### 2.10 Step 4 — how the stowing actually works
+
+If nothing exists at the target, I fold the whole directory into **one
+symlink** — `~/.config/fish` becomes a single link, not a chain of files.
+If the target already exists for real, I fall back to merging
+file-by-file, recursing as deep as needed. Two packages reaching into the
+same directory (say `fish` and `starship` both touch `~/.config`) just
+merge — the first folds, the second unfolds and both live side by side,
+exactly like real GNU Stow. Because every entry is a plain symlink, the
+repo stays GNU-stow-compatible: `stow -t ~ fish sway` from the repo root
+sees the same trees I do.
+
+A *real* file already blocking a path is a conflict — I report it clearly
+and never clobber it silently. If the file was hand-managed before you
+handed it to me, say so with `:force t` and I replace it with the
+symlink:
+
+```lisp
+(stow "fish" :force t)
+```
+
+You can also stow somewhere other than `~` (`(stow "skel-fish" :to "/etc/skel")`),
+rename a package's source directory, or mark a package for removal. All
+of that is in §5.6.
+
+#### 2.11 Step 5 — mix stow with logic
+
+Stow covers the static stuff — dotfiles. Features and providers cover the
+things that need logic: package installation, service enablement, config
+generation, system-level files outside `~`. The two compose freely in one
+home:
+
+```lisp
+;; linacs/home.lisp
+(define-home my-dotfiles
+  :traits (:prune-explicitly-disabled)
+  :asset-root ".."
+  (package-preference :system :flatpak :toolbox)
+
+  ;; Dotfiles — plain stow + file drops
+  (stow "fish")
+  (stow "sway")
+  (file "~/.bashrc" :from "bashrc")
+  (file "~/.gitconfig" :from "gitconfig.tmpl" :template t)
+
+  ;; Logic — features that install packages and enable services
+  (use-feature :editor :via :emacs)
+  (use-feature :security)
+
+  ;; Explicit removal
+  (package "vim-tiny" :disabled t))
+```
+
+You check this into Git, clone it on your new machine, and run:
+
+```sh
+linacs plan  -C ~/dotfiles/linacs   # see what would happen
+linacs apply -C ~/dotfiles/linacs   # make it so
+```
+
+The `-C` path points at the `linacs/` machinery folder; `:asset-root ".."`
+resolves the stow sources one level up. If you'd rather keep machinery
+and assets together, point `-C` at the repo root itself and omit
+`:asset-root` — the layout is your choice.
+
+#### 2.12 Step 6 — a real reference to crib from
+
+The `linacs-home` repository is exactly this layout, running the full
+stack: profiles, templates, secrets, vendored plugins under
+`linacs/plugins/`, and stow-able packages at the repo root. Clone it and
+read `linacs/home.lisp` for a worked example of everything in this
+section.
+
+That's the whole loop, both paths. Everything past this point in the
+manual is reference material for when you want to do something more
+specific: secrets, templates, removal, cross-action dependencies,
+pipeline hooks, and so on.
 
 ---
 
@@ -306,20 +484,31 @@ this order will save you a lot of head-scratching later.
 ### 3.2 Step 0: Discovery
 
 Before I know anything about your machine, I go looking for code. I look
-for two kinds:
+for three kinds, in this order:
 
+- **Third-party plugins.** Any ASDF system whose name starts with `linacs-`
+  gets loaded first, so your project can build on top of whatever a plugin
+  registers.
+- **Your project's own plugins.** Anything under `plugins/*/` in your
+  project root that is a `linacs-*` ASDF system — a git submodule or a
+  plain checkout, symlinks followed — is loaded next. This is how you pin
+  a specific plugin version to your home without touching ASDF's source
+  registry (see §4.6).
 - **Your project's own files.** I have six subdirectories I always check:
   `profiles/`, `features/`, `providers/`, `catalogs/`, `templates/`,
   `hooks/`. Any `.lisp` file in any of them, at any depth, gets loaded —
   alphabetically, so you can control ordering within a directory just by
   naming files `00-first.lisp`, `01-second.lisp` if you ever need to. Then,
   last of all, I load `home.lisp` from your project root.
-- **Third-party plugins.** Any ASDF system whose name starts with `linacs-`
-  gets loaded too, before your own files, so your project can build on top
-  of whatever a plugin registers.
+
+All project files are read in the `:linacs.api` package, so every DSL
+macro and registration form is available unqualified — the
+`(in-package :linacs.api)` header you see in examples is optional, not
+required.
 
 Nobody writes a manifest file listing what to load. You just drop a
-`.lisp` file in the right directory and I'll find it next time you run me.
+`.lisp` file in the right place — or a `linacs-*` system in `plugins/` —
+and I'll find it next time you run me.
 
 One thing that trips people up: **`home.lisp` is loaded, but not run,**
 during discovery. Your `define-home` body only actually executes later, in
@@ -369,8 +558,8 @@ whole body has run, I:
 2. For each feature, pick the right **Provider**. If you said
    `:via :emacs`, I use the provider registered under that name. If you
    didn't say `:via` and there's exactly one provider registered for that
-   feature, I use it automatically. If there's more than one and you
-   didn't disambiguate, I stop and tell you.
+   feature — or exactly one marked `:default t` — I use it automatically.
+   If there's more than one and none is the default, I stop and tell you.
 3. Call each selected provider with the current facts. A provider is just
    a function from facts to a list of actions — nothing more. It can
    return a fixed list, or compute one; I don't care which.
@@ -551,7 +740,7 @@ entirely and come back if curiosity strikes.
 linacs/
 ├── linacs.asd                 # Explicit ASDF :components list
 ├── src/
-│   ├── package.lisp         # The three packages: :linacs.core, :linacs.log, :linacs-templates
+│   ├── package.lisp         # The four packages: :linacs.core, :linacs.api, :linacs.log, :linacs-templates
 │   ├── conditions.lisp      # Every condition class + restart vocabulary
 │   ├── log.lisp             # Leveled logging
 │   ├── discovery.lisp       # Step 0: directory + ASDF-plugin discovery
@@ -568,7 +757,7 @@ linacs/
 │   ├── privilege.lisp       # Privilege preflight for apply
 │   ├── dsl.lisp             # define-home + convenience macros
 │   └── cli.lisp             # Argument parsing + dispatch
-└── docs/                    # This manual, the spec, and guides
+└── docs/                    # This manual, plus design documents
 ```
 
 Every file starts with a header describing exactly what it does and how
@@ -624,6 +813,7 @@ lives in a plain hash table, held in a special variable:
 | `*fact-metadata*` | `register-fact-prober` / `declare-fact` | Yes |
 | `*pipeline-hooks*` | `register-pipeline-hook` | Yes |
 | `*profiles*` | `define-profile` | Yes |
+| `*dsl-forms*` | `register-dsl-form` / core built-ins | Yes |
 | `*action-types*` | `register-action-type` | **No** |
 | `*action-type-descriptions*` | `register-action-type :description` | **No** |
 
@@ -709,6 +899,7 @@ map of what's extensible and where it's registered:
 | Document a profile-only fact (no prober) | `declare-fact` | a project's `profiles/*.lisp` |
 | Cross-cutting behavior (audit logging, a confirmation prompt) | `register-pipeline-hook` | a project's `hooks/*.lisp` |
 | A new `:via` handler for the `:package` action type | `register-package-via-handler` | a plugin, or a project's `providers/*.lisp` |
+| A distro repository method (e.g. `:dnf-copr`, `:apt-ppa`) | `register-repository-method` | a distro plugin's `distributions/*` |
 | A template renderer | a `RENDER-*` function | a project's `templates/*.lisp` |
 | **A genuinely new action type** (rare — `:command` covers most cases) | `register-action-type` | a plugin, or a change to `src/action-types/` if it belongs in the core |
 | Mark an action type as needing sudo | `register-sudo-requiring-action-type` | a plugin |
@@ -740,6 +931,13 @@ registered at load time. Look at any file in `src/action-types/` as a
 template for a full action type; `command.lisp` is the simplest complete
 example.
 
+A repository method works the same way: `register-repository-method`
+takes three functions — `:present-p`, `:ensure`, and `:remove` — and the
+`:repository` executor dispatches to them (see §5.21). Distro plugins
+pair the method with a `:repositories` catalog entry, and core
+auto-inserts the repository action ahead of any `:system` package that
+needs it (see §5.16).
+
 If your new action type's executor calls `sudo` unconditionally, register
 it with `register-sudo-requiring-action-type` so the plan/apply privilege
 notices count it correctly; if a `:via` you add never needs root (say,
@@ -767,6 +965,11 @@ The root of your project. Exactly one per project.
   `:prune-explicitly-disabled` — without it, `:disabled t` actions are
   simply never run at all (not applied, not removed); with it, they're run
   in `:remove` mode.
+- `:asset-root` is a path, relative to the project root, under which
+  `:from` file sources and `stow` packages resolve. Default is the project
+  root itself (`.`) — assets live right next to `home.lisp`. Give it
+  `".."` when the machinery lives in a `linacs/` subfolder of a dotfiles
+  repo whose packages sit at the repo root (see Path B in §2.9).
 - Without `:traits` at all:
 
   ```lisp
@@ -1078,6 +1281,12 @@ without any plugin:
 | `:podman` | Alias for the toolbox handler |
 | `:appimage` | Standalone AppImage executables |
 
+**Repositories come along automatically.** If a canonical package needs a
+distribution repository you don't have configured yet (a Fedora COPR, an
+Ubuntu PPA, an apt line), a distro plugin's `:repositories` catalog entry
+makes me insert a `:repository` action ahead of the install — so
+`(package :wezterm)` on Fedora just works. See §5.16.
+
 **Auto-selection with `package-preference`.** When you omit `:via`
 from a `(package ...)` form, I pick the best method automatically
 based on a global chain you declare once in `define-home`:
@@ -1377,14 +1586,14 @@ each one is a complete, independent override set):
 **Selecting one:**
 
 ```sh
-linacs plan -C ~/my-home --profile work-laptop)
+linacs plan -C ~/my-home --profile work-laptop
 ```
 
 **Running with no profile at all** is completely valid — you just get
 whatever the fact probers found, with no overrides:
 
 ```sh
-linacs plan -C ~/my-home))
+linacs plan -C ~/my-home
 ```
 
 **Profile-only facts** (`:work-p` above, `:languages`, etc.) have no
@@ -1434,6 +1643,29 @@ When I resolve a package action with `:via :flatpak`, I look for a
 `(:flatpak . "name")` entry first, falling back to the keyword's own
 name if none is found. Old `(:distro . "name")` entries continue to
 work unchanged and are treated as `:system`-via entries.
+
+**The `:repositories` catalog.** A second catalog, consulted for
+`:system` packages, maps a canonical package to a distribution repository
+it needs configured first. Its entries carry a `(:method <kw> :id <str>)`
+spec plist instead of a plain string:
+
+```lisp
+;; A distro plugin defines the catalog (here: Fedora, using the
+;; :dnf-copr method registered via register-repository-method):
+(define-catalog :repositories
+  (:wezterm (:fedora (:method :dnf-copr :id "@wez/wezterm"))))
+```
+
+When I resolve a plan, I consult this catalog for every `:package` action
+whose `:via` is `:system`. If the canonical target maps to a spec for the
+current distro, I inject a `:repository` action ahead of the package and
+make the package depend on it, so the repository is configured before the
+install runs. This is how a plugin turns `(package :wezterm)` into a
+repository-plus-package pair without any extra thought from you (see
+§5.21 for the `repository` action itself, and §4.6 for
+`register-repository-method`). Packages with no spec entry, or with a
+plain string mapping, behave exactly as before — no repository is
+injected.
 
 ### 5.17 Features
 
@@ -1608,27 +1840,37 @@ provider, or via `direct-action`):
 (:action :config-env   :target "~/.config/environment.d/wayland.conf"
                          :set (("MOZ_ENABLE_WAYLAND" . "1")))
 (:action :secret       :target "~/.ssh/id_ed25519" :from :pass :path "ssh/id_ed25519" :mode #o600)
-(:action :stow         :target "fish" :to "~"))
+(:action :stow         :target "fish" :to "~")
+(:action :repository   :target "@wez/wezterm" :method :dnf-copr)
 ```
 
-Thirteen more built-in types — `:user`, `:group`, `:authorized-key`,
+Most of the names are self-evident: `:user` creates a user, `:group`
+creates a group, `:stow` stows. The first twelve in the list —
+`:package`, `:ensure-dir`, `:copy-file`, `:symlink`, `:service`,
+`:timer`, `:env-var`, `:config-lines`, `:config-ini`, `:config-env`,
+`:secret`, `:stow` — are the "home-directory" types: the ones you'd
+reach for to manage dotfiles inside `~`. The other types build on a
+wider scope and have their own convenience forms documented below.
+
+Fourteen more built-in types — `:user`, `:group`, `:authorized-key`,
 `:permissions`, `:mount`, `:sysctl`, `:kernel-module`, `:hostname`,
-`:locale`, `:firewall`, `:cron`, `:command`, `:clone` — cover system
-administration and other tasks beyond a single home directory. They have
-their own convenience forms too (`user`, `group`, `authorized-key`, ...);
-see §5.21 for every one of them with example variations.
+`:locale`, `:firewall`, `:cron`, `:command`, `:clone`, `:repository` —
+cover system administration and other tasks beyond a single home
+directory. They have their own convenience forms too (`user`, `group`,
+`authorized-key`, ...); see §5.21 for every one of them with example
+variations.
 
 **`:service`, specifically** — enables/starts a systemd unit only if it
 isn't already in the desired state:
 
 ```lisp
-(:action :service :target :tlp :enabled t :running t))
+(:action :service :target :tlp :enabled t :running t)
 ```
 
 **`:timer`, specifically** — creates and enables a systemd timer unit:
 
 ```lisp
-(:action :timer :target "backup-daily" :on-calendar "daily"))
+(:action :timer :target "backup-daily" :on-calendar "daily")
 ```
 
 **Registering a brand-new action type** (for when even `direct-action`
@@ -1885,6 +2127,30 @@ directories); `:remove` deletes the whole checked-out tree, falling back
 to a privileged `rm -rf` only if the plain delete fails, same as every
 other filesystem-removing built-in.
 
+**`repository`** — ensures a distribution software repository (a Fedora
+COPR, an Ubuntu PPA, an apt line, ...) is configured, dispatching on the
+action's `:method` through methods registered by
+`register-repository-method` (see §4.6). The executor itself is
+distro-agnostic — all knowledge of how a *given* distro adds a repository
+lives in distro plugins:
+
+```lisp
+(repository "@wez/wezterm" :method :dnf-copr)
+```
+
+You rarely write these by hand: a distro plugin's `:repositories` catalog
+entry makes me insert the `:repository` action automatically, ahead of
+any `:system` package that needs it (see §5.16) — so `(package :wezterm)`
+*can* just work. If no method is registered for the `:method` you used
+(the distro plugin that provides it isn't loaded), I signal an
+`execution-failure` in every mode — `linacs check` surfaces that before
+`apply` would ever hit a half-configured system.
+
+The identity includes the method — `(:repository :dnf-copr . "@wez/wezterm")`
+— so two packages that need the same repository collapse into a single
+action. Registered as needing sudo, since adding a system repository
+writes under `/etc`.
+
 ### 5.22 Templates
 
 A template renderer is a plain Common Lisp function returning a string,
@@ -1981,40 +2247,44 @@ linacs version
 nothing:
 
 ```sh
-linacs plan -C ~/my-home --profile work-laptop))
+linacs plan -C ~/my-home --profile work-laptop
 ```
 
-**`apply`** — actually execute. Never run this one under `sudo` yourself:
-whichever individual actions in the plan genuinely need root (a package
-install, a root-owned system file) escalate on their own, one command at
-a time, and may prompt you for your `sudo` password right at that step:
+**`apply`** — actually execute. Never run this one under `sudo` yourself.
+If the plan needs root anywhere (a package install, a root-owned system
+file), I prompt you for your `sudo` password **once, up front**, cache it
+for the run, and escalate only the individual commands that genuinely
+need it:
 
 ```sh
-linacs apply -C ~/my-home --profile work-laptop)
+linacs apply -C ~/my-home --profile work-laptop
 
 # dry-run: see exactly what apply would have done, touches nothing
-linacs apply -C ~/my-home --profile work-laptop -n))
+linacs apply -C ~/my-home --profile work-laptop -n
+
+# non-interactive: read the sudo password from stdin before resolving
+linacs apply -C ~/my-home --sudo-password-stdin < ~/.sudo-pass
 ```
 
 **`diff`** — check mode, but focused on reporting only what would
 actually change:
 
 ```sh
-linacs diff -C ~/my-home --profile work-laptop))
+linacs diff -C ~/my-home --profile work-laptop
 ```
 
 **`validate`** — syntax only, doesn't touch facts/features/providers at
 all, runs even if a plugin is broken:
 
 ```sh
-linacs validate -C ~/my-home))
+linacs validate -C ~/my-home
 ```
 
 **`check`** — full resolution (steps 0–4), no execution — catches missing
 providers, action conflicts, dependency cycles, fact-prober conflicts:
 
 ```sh
-linacs check -C ~/my-home --profile work-laptop))
+linacs check -C ~/my-home --profile work-laptop
 ```
 
 **`explain`** — prints which provider was actually chosen for each
@@ -2023,36 +2293,37 @@ plus the final numbered action order, for when `plan`'s output isn't
 detailed enough:
 
 ```sh
-linacs explain -C ~/my-home --profile work-laptop))
+linacs explain -C ~/my-home --profile work-laptop
 ```
 
 **`graph`** — prints the abstract feature dependency graph (not the
 action list), with each feature's description alongside it:
 
 ```sh
-linacs graph -C ~/my-home --profile work-laptop))
+linacs graph -C ~/my-home --profile work-laptop
 ```
 
 **`export`** — writes the resolved action list out as a Lisp
 s-expression, to a file if you want one:
 
 ```sh
-linacs export -C ~/my-home --profile work-laptop -o /tmp/plan.sexp))
+linacs export -C ~/my-home --profile work-laptop -o /tmp/plan.sexp
 ```
 
-**`list`** — every registered feature, provider, catalog, and action
-type, as aligned tables, each with whatever description you gave it (in
-`:description` on `define-feature`, `define-provider`, or a built-in
-action type's own documentation). Features get a combined view showing
-every provider registered for them in one row:
+**`list`** — every registered feature, provider, catalog, action type,
+DSL form, and fact, as aligned tables, each with whatever description you
+gave it (in `:description` on `define-feature`, `define-provider`, or a
+built-in action type's own documentation). Features get a combined view
+showing every provider registered for them (and any `:composed-of`
+sub-features) in one row:
 
 ```sh
-linacs list -C ~/my-home)
+linacs list -C ~/my-home
 # Features:
-#   FEATURE   DESCRIPTION              PROVIDERS
-#   --------  -----------------------  --------------------
-#   editor    Text editor capability   emacs (default), vim
-#   shell     Login shell and dotfiles bash, zsh
+#   FEATURE  DESCRIPTION              COMPOSED OF          PROVIDERS
+#   -------  -----------------------  -------------------  -------------
+#   editor   Text editor capability                       emacs (default), vim
+#   office   Office productivity suite word-proc, calc,..  lib (default)
 #
 # Providers:
 #   PROVIDER  FOR FEATURE  DEFAULT  DESCRIPTION
@@ -2060,20 +2331,36 @@ linacs list -C ~/my-home)
 #   emacs     editor       yes      GNU Emacs with a minimal, fast-starting config
 #   vim       editor                Vim with sane defaults, no plugin manager
 #
+# Catalogs:
+#   packages
+#   repositories
+#
 # Action types:
 #   TYPE       DESCRIPTION
 #   ---------  --------------------------------------
 #   copy-file  Copy or render a file to a target path
 #   ...
+#
+# DSL forms:
+#   FORM   DEFINED BY
+#   -----  -------------------
+#   file   core built-in
+#   ...
+#
+# Facts:
+#   FACT   TYPE          DESCRIPTION
+#   -----  ------------  -------------------------------------
+#   os     keyword       The detected operating system
+#   ...
 ```
 
 **`facts`** — print every resolved fact, after probing and merging your
-selected `--profile`, one per line, aligned. This is the fastest way to
-answer "why did I pick that provider on this machine" without re-deriving
-it from probes yourself:
+selected `--profile` (`--platform` also applies), one per line, aligned.
+This is the fastest way to answer "why did I pick that provider on this
+machine" without re-deriving it from probes yourself:
 
 ```sh
-linacs facts -C ~/my-home --profile work-laptop)
+linacs facts -C ~/my-home --profile work-laptop
 #   DISPLAY-SERVER  :WAYLAND
 #   GPU             :INTEL
 #   HOSTNAME        "work-thinkpad"
@@ -2089,14 +2376,14 @@ ambiguous with no default, a `:via` that doesn't exist), and a count of
 how many package installs in the plan will actually need root:
 
 ```sh
-linacs doctor -C ~/my-home --profile work-laptop))
+linacs doctor -C ~/my-home --profile work-laptop
 ```
 
 **`init`** — scaffold a brand-new project (see §2.1):
 
 ```sh
-linacs init -C ~/my-home))
-linacs init -C ~/my-home --example))   # seed a tiny working :shell project
+linacs init -C ~/my-home
+linacs init -C ~/my-home --example   # seed a tiny working :shell project
 ```
 
 **Global options, usable on (almost) any command:**
@@ -2109,6 +2396,8 @@ linacs init -C ~/my-home --example))   # seed a tiny working :shell project
 -n, --dry-run          Show changes without executing them (apply)
     --continue         Keep going after a failed action
 -o, --output FILE      Write output to FILE (export)
+    --sudo-password-stdin   Read the sudo password from stdin before resolving
+    --sudo-reset            Run `sudo -k` after the command finishes
 -v, --verbose          Increase verbosity (repeatable: -v, -vv, -vvv)
     --quiet            Only show errors
 -h, --help             Show help and exit
@@ -2131,7 +2420,7 @@ with a one-line description, aligned into a column, followed by every
 global option:
 
 ```sh
-linacs --help)
+linacs --help
 # Usage: linacs <command> [options]
 #
 # Commands:
@@ -2147,23 +2436,28 @@ instance, and I won't pretend it does), and a couple of runnable
 examples:
 
 ```sh
-linacs apply --help)
+linacs apply --help
 # Usage: linacs apply [options]
 #
 # Execute the ordered action list
 #
 # Options:
-#   -C, --root DIR  Project root (default ".")
-#   --profile NAME  Select a defined profile (fact overrides)
-#   -n, --dry-run   Show changes without executing them
-#   --continue      Keep going after a failed action
-#   -v, --verbose   Increase verbosity (repeatable: -v, -vv)
-#   --quiet         Only show errors
-#   -h, --help      Show this command's help and exit
+#   -C, --root DIR            Project root (default ".")
+#       --profile NAME        Select a defined profile (fact overrides)
+#       --provider T=P        Force provider P for feature T (e.g. :editor=:emacs)
+#   -p, --platform NAME       Override the :os fact (e.g. fedora, arch, ubuntu)
+#   -n, --dry-run             Show changes without executing them
+#       --continue            Keep going after a failed action
+#       --sudo-password-stdin Read the sudo password from stdin before resolving
+#       --sudo-reset          Run `sudo -k` after the command finishes
+#   -v, --verbose             Increase verbosity (repeatable: -v, -vv)
+#       --quiet               Only show errors
+#   -h, --help                Show this command's help and exit
 #
 # Examples:
-#   linacs apply -C ~/my-home --profile work-laptop   # sudo (if needed) is per-action
+#   linacs apply -C ~/my-home --profile work-laptop   # sudo prompted once up front, not per-action
 #   linacs apply -C ~/my-home --profile work-laptop -n   # dry run
+#   linacs apply --sudo-password-stdin < ~/.sudo-pass
 ```
 
 **If you pass a flag I don't recognize, or leave a flag missing its
@@ -2172,7 +2466,7 @@ trace — I print that command's help (so you can see immediately what it
 does accept) and exit non-zero:
 
 ```sh
-linacs apply --bogus-flag)
+linacs apply --bogus-flag
 # [error] Unknown or malformed option(s) for 'apply': --bogus-flag
 #
 # Usage: linacs apply [options]
@@ -2202,13 +2496,17 @@ signal, and what your options are at each one:
 | `dependency-cycle` | Your `:depends-on` edges form a loop | abort (fix the cycle) |
 | `execution-failure` | An executor's underlying operation failed (disk full, network down, a privileged command's sudo prompt failed or was declined, ...) | retry / skip / abort |
 
-I never require you to run me as root. Every action that genuinely needs
-privilege escalates on its own, per action, via `sudo` — a package
-install, a write to a root-owned system file, creating a system user.
-Everything else never touches `sudo` at all. If a privileged step
+I never require you to run me as root. When the plan needs privilege (a
+package install, a write to a root-owned system file, creating a system
+user), I prompt for your `sudo` password once, up front, cache it for
+the run, and escalate only the individual commands that genuinely need
+it. Everything else never touches `sudo` at all. If a privileged step
 genuinely fails (wrong password, no TTY, cancelled), that's a real
 `execution-failure`, not something silently treated as "nothing needed to
-change."
+change." On a non-interactive terminal there's no TTY to prompt on, so
+`apply --sudo-password-stdin` reads the password before any action runs.
+`--sudo-reset` runs `sudo -k` after the run to drop any cached
+credentials.
 
 I never retry automatically, and I never roll back. Re-running me after
 you've fixed the underlying problem is always the right move — every
