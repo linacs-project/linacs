@@ -132,6 +132,37 @@
     #:context-provenance
     #:context-progress-reporter
     #:context-capture-subprocess-output
+    ;; execution results / provenance / plan (REFACTOR.org Action 5)
+    #:action-result
+    #:make-action-result
+    #:result-action
+    #:result-status
+    #:result-error
+    #:result-duration
+    #:result-mode
+    #:result->plist
+    #:plist->result
+    #:action-provenance
+    #:make-action-provenance
+    #:make-action-provenance-from-plist
+    #:provenance-source
+    #:provenance-feature
+    #:provenance-provider
+    #:provenance-facts-snapshot
+    #:provenance-location
+    #:provenance->plist
+    #:action-plan
+    #:make-action-plan
+    #:plan-actions
+    #:plan-provenance
+    #:plan-results
+    #:plan-conflicts
+    #:add-action
+    #:action-by-identity
+    #:deduplicate-plan
+    #:order-plan
+    #:plan-result
+    #:plan-status
     #:*action-identity-functions*
    #:register-action-type
    #:find-executor
@@ -288,6 +319,17 @@
     #:context-asset-root
     #:context-results
     #:context-provenance
+    ;; execution results / provenance / plan (REFACTOR.org Action 5)
+    #:action-result #:make-action-result
+    #:result-action #:result-status #:result-error
+    #:action-provenance #:make-action-provenance
+    #:provenance-source #:provenance-feature #:provenance-provider
+    #:provenance-facts-snapshot
+    #:action-plan #:make-action-plan
+    #:plan-actions #:plan-provenance #:plan-results #:plan-conflicts
+    #:plan-status #:plan-result
+    #:add-action #:action-by-identity
+    #:deduplicate-plan #:order-plan
     ;; conditions
     #:linacs-error #:missing-provider #:action-conflict #:dsl-form-conflict
     #:execution-failure
@@ -340,6 +382,17 @@
     #:context-asset-root
     #:context-results
     #:context-provenance
+    ;; execution results / provenance / plan (REFACTOR.org Action 5)
+    #:action-result #:make-action-result
+    #:result-action #:result-status #:result-error
+    #:action-provenance #:make-action-provenance
+    #:provenance-source #:provenance-feature #:provenance-provider
+    #:provenance-facts-snapshot
+    #:action-plan #:make-action-plan
+    #:plan-actions #:plan-provenance #:plan-results #:plan-conflicts
+    #:plan-status #:plan-result
+    #:add-action #:action-by-identity
+    #:deduplicate-plan #:order-plan
     ;; conditions
     #:linacs-error #:missing-provider #:action-conflict #:dsl-form-conflict
     #:execution-failure

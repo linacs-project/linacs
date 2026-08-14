@@ -182,9 +182,9 @@ PRUNE-P trait: [x] disabled+prune, [-] disabled only, [+] would-change,
 (defun provenance-string (id)
   (let ((prov (action-provenance id)))
     (if prov
-        (let ((feat (getf prov :feature))
-              (prov-name (getf prov :provider))
-              (src (getf prov :source)))
+        (let ((feat (provenance-feature prov))
+              (prov-name (provenance-provider prov))
+              (src (provenance-source prov)))
           (or (and feat (format nil "~a / ~a" feat prov-name))
               (and src (format nil "user:~a" src))
               ""))
@@ -241,41 +241,43 @@ and in sudo's own credential cache via sudo -S."
 (defun cmd-plan (opts)
   (bootstrap opts)
   (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
-  (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
-                                                    :project-root (cli-opts-root opts)
-                                                    :provider-overrides (cli-opts-provider-overrides opts)
-                                                    :platform (cli-opts-platform opts)
-                                                    :execute-mode :plan-only)
-    (when ordered (preflight-notice ordered))
-    (let* ((prune-p (member :prune-explicitly-disabled (getf home :traits)))
-           (verbose (>= (cli-opts-verbosity opts) 2))
-           (annotated
-            (loop for a in ordered
-                  for id = (action-identity a)
-                  for glyph = (action-status-glyph a prune-p)
-                  for via = (package-via-label a)
-                  collect (list glyph
-                                (string-downcase (string (action-type a)))
-                                (princ-to-string (action-target a))
-                                via
-                                (if verbose (provenance-string id) "")))))
-      (format t "Resolved plan for ~a (traits: ~a):~%~%" (getf home :name) (or (getf home :traits) "none"))
-      (let ((display (mapcar (lambda (row)
-                               (cons (colorize-glyph (first row)) (rest row)))
-                             annotated)))
-        (if verbose
-            (print-table '("STATUS" "TYPE" "TARGET" "VIA" "PROVENANCE") display)
-            (print-table '("STATUS" "TYPE" "TARGET" "VIA")
-                         (mapcar (lambda (r) (subseq r 0 4)) display))))
-      (let* ((to-apply (count "[+]" annotated :key #'first :test #'string=))
-             (present (count "[!]" annotated :key #'first :test #'string=))
-             (remove (count "[x]" annotated :key #'first :test #'string=))
-             (skipped (count "[-]" annotated :key #'first :test #'string=)))
-        (format t "~%~d action(s): ~d to apply, ~d already present~@[, ~d to remove~]~@[, ~d disabled~]~%"
-                (length ordered) to-apply present
-                (if (plusp remove) remove 0)
-                (if (plusp skipped) skipped 0))
-        (format t "~a~%" (plan-summary-legend))))
+  (multiple-value-bind (ordered home plan) (run-pipeline :profile (cli-opts-profile opts)
+                                                         :project-root (cli-opts-root opts)
+                                                         :provider-overrides (cli-opts-provider-overrides opts)
+                                                         :platform (cli-opts-platform opts)
+                                                         :execute-mode :plan-only)
+    (declare (ignore ordered))
+    (let* ((actions (plan-actions plan)))
+      (when actions (preflight-notice actions))
+      (let* ((prune-p (member :prune-explicitly-disabled (getf home :traits)))
+             (verbose (>= (cli-opts-verbosity opts) 2))
+             (annotated
+              (loop for a in actions
+                    for id = (action-identity a)
+                    for glyph = (action-status-glyph a prune-p)
+                    for via = (package-via-label a)
+                    collect (list glyph
+                                  (string-downcase (string (action-type a)))
+                                  (princ-to-string (action-target a))
+                                  via
+                                  (if verbose (provenance-string id) "")))))
+        (format t "Resolved plan for ~a (traits: ~a):~%~%" (getf home :name) (or (getf home :traits) "none"))
+        (let ((display (mapcar (lambda (row)
+                                 (cons (colorize-glyph (first row)) (rest row)))
+                               annotated)))
+          (if verbose
+              (print-table '("STATUS" "TYPE" "TARGET" "VIA" "PROVENANCE") display)
+              (print-table '("STATUS" "TYPE" "TARGET" "VIA")
+                           (mapcar (lambda (r) (subseq r 0 4)) display))))
+        (let* ((to-apply (count "[+]" annotated :key #'first :test #'string=))
+               (present (count "[!]" annotated :key #'first :test #'string=))
+               (remove (count "[x]" annotated :key #'first :test #'string=))
+               (skipped (count "[-]" annotated :key #'first :test #'string=)))
+          (format t "~%~d action(s): ~d to apply, ~d already present~@[, ~d to remove~]~@[, ~d disabled~]~%"
+                  (length actions) to-apply present
+                  (if (plusp remove) remove 0)
+                  (if (plusp skipped) skipped 0))
+          (format t "~a~%" (plan-summary-legend)))))
     (sudo-reset-after-run opts)))
 
 
@@ -426,13 +428,14 @@ On non-interactive terminals (piped output, CI), shows static line labels."
            (format t "  ~a ~a ~a~%" glyph type-name target))
        (finish-output)))))
 
-(defun print-apply-summary (ordered)
-  "Print a summary table and legend after CMD-APPLY completes."
-  (let* ((results *action-results*)
-         (rows (loop for a in ordered
+(defun print-apply-summary (plan)
+  "Print a summary table and legend after CMD-APPLY completes, from the
+executed ACTION-PLAN's results table (REFACTOR.org Action 5)."
+  (let* ((results (plan-results plan))
+         (rows (loop for a in (plan-actions plan)
                      for id = (action-identity a)
                      for result = (gethash id results)
-                     for status = (getf result :status)
+                     for status = (result-status result)
                      for glyph = (case status
                                    ((:changed :applied :removed) "[v]")
                                    (:unchanged "[!]")
@@ -445,7 +448,7 @@ On non-interactive terminals (piped output, CI), shows static line labels."
                                    (princ-to-string (action-target a))
                                     via)))
          (counts (loop for v being the hash-value of results
-                       for status = (getf v :status)
+                       for status = (result-status v)
                        count status into total
                        count (member status '(:changed :applied :removed)) into applied
                        count (eq status :unchanged) into unchanged
@@ -469,13 +472,15 @@ On non-interactive terminals (piped output, CI), shows static line labels."
          (*progress-reporter* (and (not (cli-opts-dry-run opts))
                                    #'apply-progress-reporter))
          (*captured-subprocess-lines* nil))
-    (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
-                                                      :project-root (cli-opts-root opts)
-                                                      :provider-overrides (cli-opts-provider-overrides opts)
-                                                      :platform (cli-opts-platform opts)
-                                                      :execute-mode (if (cli-opts-dry-run opts) :check :apply)
-                                                      :continue-on-error (cli-opts-continue-on-error opts))
+    (multiple-value-bind (ordered home plan) (run-pipeline :profile (cli-opts-profile opts)
+                                                           :project-root (cli-opts-root opts)
+                                                           :provider-overrides (cli-opts-provider-overrides opts)
+                                                           :platform (cli-opts-platform opts)
+                                                           :execute-mode (if (cli-opts-dry-run opts) :check :apply)
+                                                           :continue-on-error (cli-opts-continue-on-error opts))
       (declare (ignore ordered home))
+      (unless (cli-opts-dry-run opts)
+        (when plan (print-apply-summary plan)))
       (sudo-reset-after-run opts))))
 
 (defun cmd-diff (opts)
@@ -500,9 +505,9 @@ we call execute-action separately to collect :would-change statuses."
                                 collect (let* ((id (action-identity a))
                                                (prov (action-provenance id))
                                                (prov-str (if prov
-                                                             (let ((feat (getf prov :feature))
-                                                                   (prov-name (getf prov :provider))
-                                                                   (src (getf prov :source)))
+(let ((feat (provenance-feature prov))
+                                    (prov-name (provenance-provider prov))
+                                    (src (provenance-source prov)))
                                                                (or (and feat (format nil "~a / ~a" feat prov-name))
                                                                    (and src (format nil "user:~a" src))
                                                                    ""))
@@ -556,9 +561,9 @@ NIL if no override was given. Takes precedence over the home's :via."
                              for glyph = (action-status-glyph a prune-p)
                              for id = (action-identity a)
                              for via = (package-via-label a)
-                             for facts-str = (let ((prov (action-provenance id)))
-                                               (and prov (getf prov :facts-snapshot)
-                                                    (format nil "~{~a~^, ~}" (getf prov :facts-snapshot))))
+for facts-str = (let ((prov (action-provenance id)))
+                                                (and prov (provenance-facts-snapshot prov)
+                                                     (format nil "~{~a~^, ~}" (provenance-facts-snapshot prov))))
                              collect (list (princ-to-string i) glyph
                                            (string-downcase (string (action-type a)))
                                            (princ-to-string (action-target a))

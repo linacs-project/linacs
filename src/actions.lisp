@@ -140,21 +140,27 @@ for new action types so ACTION-IDENTITY never needs a hardcoded cond chain:
         (cons type (action-target action)))))
 
 (defun register-provenance (action-id provenance)
-  "Record PROVENANCE plist for ACTION-ID in the active context's provenance
-table (else *PROVENANCE*)."
-  (setf (gethash action-id (context-provenance)) provenance))
+  "Record PROVENANCE for ACTION-ID in the active context's provenance
+table (else *PROVENANCE*). PROVENANCE may be an ACTION-PROVENANCE instance
+or the historic (:feature ... :provider ... :source ...) plist; plists
+are normalized to instances on the way in (REFACTOR.org Action 5)."
+  (setf (gethash action-id (context-provenance))
+        (if (typep provenance 'action-provenance)
+            provenance
+            (make-action-provenance-from-plist provenance))))
 
 (defun action-provenance (action-id)
-  "Retrieve the provenance plist for ACTION-ID from the active context's
+  "Retrieve the ACTION-PROVENANCE for ACTION-ID from the active context's
 provenance table (else *PROVENANCE*), or NIL."
   (gethash action-id (context-provenance)))
 
 (defun action-result-status (action-id)
   "Retrieve the result status (:applied :already-met :failed :skipped) for
 ACTION-ID from the active context's results table (else *ACTION-RESULTS*),
-or NIL if not yet executed."
+or NIL if not yet executed. Results are stored as ACTION-RESULT instances;
+historic plists read via RESULT-STATUS for compatibility."
   (let ((result (gethash action-id (context-results))))
-    (and result (getf result :status))))
+    (and result (result-status result))))
 
 (defgeneric action-source-label (action)
   (:documentation "Human-readable label of where ACTION came from, for
@@ -403,7 +409,10 @@ is NIL the historic dynamic globals are used unchanged."
                (with-linacs-restarts
                    (:on-retry #'run
                     :on-skip (lambda ()
-                               (setf (gethash id *action-results*) (list :status :skipped))
+                               (setf (gethash id *action-results*)
+                                     (make-action-result :action action
+                                                         :status :skipped
+                                                         :mode mode))
                                (values nil :skipped))
                     :on-abort (lambda () (throw 'linacs-abort nil)))
                  (let ((reentered nil))
@@ -424,7 +433,10 @@ is NIL the historic dynamic globals are used unchanged."
                             (unless reentered
                               (setf reentered t)
                               (setf (gethash id *action-results*)
-                                    (list :status :failed :error err))
+                                    (make-action-result :action action
+                                                        :status :failed
+                                                        :error err
+                                                        :mode mode))
                               (when *progress-reporter*
                                 (funcall *progress-reporter* action :failed err))
                               (error err))))
@@ -441,7 +453,10 @@ is NIL the historic dynamic globals are used unchanged."
                            (when (and mode (eq mode :apply))
                              (unless status
                                (setf status :applied))
-                             (setf (gethash id *action-results*) (list :status status)))
+                             (setf (gethash id *action-results*)
+                                   (make-action-result :action action
+                                                       :status status
+                                                       :mode mode)))
                            (when *progress-reporter*
                              (funcall *progress-reporter* action :after result))
                            (values result status)))))))))

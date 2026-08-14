@@ -38,7 +38,9 @@
                         :pathname "domain/execution"
                         :serial t
                         :components
-                        ((:file "context")))
+                        ((:file "context")
+                         (:file "result")
+                         (:file "provenance")))
                (:file "actions")
                (:module "domain"
                          :serial t
@@ -49,6 +51,10 @@
                                    ((:file "action")
                                     (:file "protocol")
                                     (:file "state")))))
+               (:module "planning"
+                        :serial t
+                        :components
+                        ((:file "plan")))
                (:file "secrets")
                (:file "templates")
                (:module "action-types"

@@ -182,11 +182,14 @@ context's results table, or *ACTION-RESULTS*)."
               ((and continue-on-error
                     (some (lambda (dep) (gethash dep failed-ids))
                           (getf action :depends-on)))
-               (setf (gethash id *action-results*) (list :status :skipped))
-               (when *progress-reporter*
-                 (funcall *progress-reporter* action :skipped))
-               (when (>= linacs.log:*verbosity* 2)
-                 (linacs.log:info "Skipping ~a -- depends on prior failure" id)))
+               (setf (gethash id *action-results*)
+                     (make-action-result :action action
+                                         :status :skipped
+                                         :mode mode))
+                    (when *progress-reporter*
+                      (funcall *progress-reporter* action :skipped))
+                    (when (>= linacs.log:*verbosity* 2)
+                      (linacs.log:info "Skipping ~a -- depends on prior failure" id)))
               (t
                (handler-case
                    ;; The interactive handler runs at signal time, while the
@@ -195,8 +198,12 @@ context's results table, or *ACTION-RESULTS*)."
                    (handler-bind ((linacs-error #'handle-linacs-error-interactively))
                      (execute-action action :mode mode :context context))
                  (linacs-error (e)
-                   (setf (gethash id *action-results*) (list :status :failed :error e))
-                   (setf (gethash id failed-ids) t)
+                    (setf (gethash id *action-results*)
+                          (make-action-result :action action
+                                              :status :failed
+                                              :error e
+                                              :mode mode))
+                    (setf (gethash id failed-ids) t)
                    (if continue-on-error
                        (linacs.log:warn* "~a failed; continuing" id)
                        (error e)))))))))))
@@ -213,11 +220,19 @@ CONTINUE-ON-ERROR means skip failed actions and their dependents rather
 than aborting the entire run.
 CONTEXT is an optional EXECUTION-CONTEXT (REFACTOR.org Action 4) forwarded
 to EXECUTE-PLAN; when NIL EXECUTE-PLAN uses the historic dynamic globals.
-PROVIDER-OVERRIDES and PLATFORM are forwarded to RESOLVE-PLAN (see there)."
+PROVIDER-OVERRIDES and PLATFORM are forwarded to RESOLVE-PLAN (see there).
+Returns (values ORDERED HOME PLAN), where PLAN is the ACTION-PLAN backing
+this run (its :actions are ORDERED and its :provenance/:results tables are
+the live tables the pipeline resolved and executed against), so plan,
+apply, and apply --dry-run all consume the same ActionPlan
+(REFACTOR.org Action 5)."
   (multiple-value-bind (ordered home)
       (resolve-plan :profile profile :project-root project-root
                     :provider-overrides provider-overrides :platform platform)
-    (unless (eq execute-mode :plan-only)
-      (execute-plan ordered home :mode execute-mode :continue-on-error continue-on-error
-                    :context context))
-    (values ordered home)))
+    (let ((plan (make-action-plan :actions ordered
+                                  :provenance (context-provenance)
+                                  :results (context-results))))
+      (unless (eq execute-mode :plan-only)
+        (execute-plan ordered home :mode execute-mode :continue-on-error continue-on-error
+                      :context context))
+      (values ordered home plan))))

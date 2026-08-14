@@ -43,6 +43,12 @@
                  (:file "project-root")
                  (:file "repository-prerequisites")
                  (:file "execution-context")))
+(:module "execution"
+                :serial t
+                :components
+                ((:file "result")
+                 (:file "provenance")
+                 (:file "plan")))
       (:module "cli"
                :serial t
                :components
