@@ -187,9 +187,13 @@ Signals EXECUTION-FAILURE if the command exits non-zero."
             (let ((out (get-output-stream-string out-str))
                   (err (get-output-stream-string err-str)))
               (when (plusp (length out))
-                (push (cons :stdout out) *captured-subprocess-lines*))
+                (push (cons :stdout out) *captured-subprocess-lines*)
+                (report-event (make-action-output :action *current-action*
+                                                  :stream :stdout :line out)))
               (when (plusp (length err))
-                (push (cons :stderr err) *captured-subprocess-lines*))
+                (push (cons :stderr err) *captured-subprocess-lines*)
+                (report-event (make-action-output :action *current-action*
+                                                  :stream :stderr :line err)))
               (unless (zerop exit-code)
                 (error 'execution-failure :action-type :privileged-command
                        :target (format nil "~{~a~^ ~}" args)

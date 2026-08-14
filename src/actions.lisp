@@ -401,10 +401,10 @@ the duration of the executor call via WITH-EXECUTION-CONTEXT; when CONTEXT
 is NIL the historic dynamic globals are used unchanged."
   (with-execution-context context
     (let* ((id (action-identity action))
-         (executor (find-executor (action-type action))))
+         (executor (find-executor (action-type action)))
+         (*current-action* action))
     (setf *captured-subprocess-lines* nil)
-    (when *progress-reporter*
-      (funcall *progress-reporter* action :before))
+    (report-event (make-action-started :action action))
     (labels ((run ()
                (with-linacs-restarts
                    (:on-retry #'run
@@ -437,8 +437,8 @@ is NIL the historic dynamic globals are used unchanged."
                                                         :status :failed
                                                         :error err
                                                         :mode mode))
-                              (when *progress-reporter*
-                                (funcall *progress-reporter* action :failed err))
+                              (report-event
+                               (make-action-failed :action action :error err))
                               (error err))))
                      (handler-bind
                          ((linacs-error #'record-and-reraise)
@@ -457,8 +457,8 @@ is NIL the historic dynamic globals are used unchanged."
                                    (make-action-result :action action
                                                        :status status
                                                        :mode mode)))
-                           (when *progress-reporter*
-                             (funcall *progress-reporter* action :after result))
+                           (report-event
+                             (make-action-completed :action action :result result))
                            (values result status)))))))))
       (run)))))
 

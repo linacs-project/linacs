@@ -38,9 +38,10 @@
                         :pathname "domain/execution"
                         :serial t
                         :components
-                        ((:file "context")
-                         (:file "result")
-                         (:file "provenance")))
+((:file "context")
+                          (:file "result")
+                          (:file "provenance")
+                          (:file "events")))
                (:file "actions")
                (:module "domain"
                          :serial t

@@ -164,6 +164,20 @@
     #:plan-result
     #:plan-status
     #:*action-identity-functions*
+    ;; execution events (REFACTOR.org Thought 8)
+    #:execution-event
+    #:event-stage
+    #:plan-started #:make-plan-started
+    #:feature-resolved #:make-feature-resolved
+    #:plan-completed #:make-plan-completed
+    #:action-started #:make-action-started
+    #:action-output #:make-action-output
+    #:action-completed #:make-action-completed
+    #:action-skipped #:make-action-skipped
+    #:action-failed #:make-action-failed
+    #:event-plan #:event-feature #:event-provider #:event-action
+    #:event-result #:event-error #:event-stream #:event-line
+    #:report-event
    #:register-action-type
    #:find-executor
    #:execute-action
@@ -330,6 +344,14 @@
     #:plan-status #:plan-result
     #:add-action #:action-by-identity
     #:deduplicate-plan #:order-plan
+    ;; execution events (REFACTOR.org Thought 8)
+    #:execution-event #:event-stage
+    #:make-plan-started #:make-feature-resolved #:make-plan-completed
+    #:make-action-started #:make-action-output #:make-action-completed
+    #:make-action-skipped #:make-action-failed
+    #:event-plan #:event-feature #:event-provider #:event-action
+    #:event-result #:event-error #:event-stream #:event-line
+    #:report-event
     ;; conditions
     #:linacs-error #:missing-provider #:action-conflict #:dsl-form-conflict
     #:execution-failure
@@ -393,6 +415,14 @@
     #:plan-status #:plan-result
     #:add-action #:action-by-identity
     #:deduplicate-plan #:order-plan
+    ;; execution events (REFACTOR.org Thought 8)
+    #:execution-event #:event-stage
+    #:make-plan-started #:make-feature-resolved #:make-plan-completed
+    #:make-action-started #:make-action-output #:make-action-completed
+    #:make-action-skipped #:make-action-failed
+    #:event-plan #:event-feature #:event-provider #:event-action
+    #:event-result #:event-error #:event-stream #:event-line
+    #:report-event
     ;; conditions
     #:linacs-error #:missing-provider #:action-conflict #:dsl-form-conflict
     #:execution-failure

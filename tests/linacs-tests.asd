@@ -44,11 +44,12 @@
                  (:file "repository-prerequisites")
                  (:file "execution-context")))
 (:module "execution"
-                :serial t
-                :components
-                ((:file "result")
-                 (:file "provenance")
-                 (:file "plan")))
+                 :serial t
+                 :components
+                 ((:file "result")
+                  (:file "provenance")
+                  (:file "plan")
+                  (:file "events")))
       (:module "cli"
                :serial t
                :components

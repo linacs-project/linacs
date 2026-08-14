@@ -59,6 +59,13 @@ EXECUTE-ACTION before and after each action execution.  PHASE is :BEFORE,
 :AFTER, or :FAILED.  For :AFTER, DATA is the result plist.  For
 :FAILED, DATA is the condition.")
 
+(defvar *current-action* nil
+  "The action plist currently being executed, dynamically bound by
+EXECUTE-ACTION for the duration of an executor call. Read by the
+subprocess capture path (helpers.lisp) so ACTION-OUTPUT events can tag
+the output chunks with the action that produced them; NIL outside any
+executor call.")
+
 (defvar *capture-subprocess-output* nil
   "When non-nil, RUN-PRIVILEGED in helpers.lisp captures subprocess stdout/stderr
 into *CAPTURED-SUBPROCESS-LINES* instead of passing them through to the terminal.

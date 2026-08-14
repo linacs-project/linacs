@@ -87,6 +87,8 @@ alongside it."
                    (declare (ignore ignored))
                    (multiple-value-bind (provider-fn provider-name)
                        (select-provider fname via)
+                     (report-event
+                      (make-feature-resolved :feature fname :provider provider-name))
                      (let ((raw-actions (funcall provider-fn *facts*)))
                      (mapcar (lambda (a)
                                (let* ((id (action-identity a))
@@ -176,8 +178,7 @@ context's results table, or *ACTION-RESULTS*)."
                (execute-action action :mode (if (eq mode :apply) :remove :check)
                                :context context))
               ((getf action :disabled)
-               (when *progress-reporter*
-                 (funcall *progress-reporter* action :skipped))
+               (report-event (make-action-skipped :action action))
                nil)
               ((and continue-on-error
                     (some (lambda (dep) (gethash dep failed-ids))
@@ -186,8 +187,7 @@ context's results table, or *ACTION-RESULTS*)."
                      (make-action-result :action action
                                          :status :skipped
                                          :mode mode))
-                    (when *progress-reporter*
-                      (funcall *progress-reporter* action :skipped))
+                    (report-event (make-action-skipped :action action))
                     (when (>= linacs.log:*verbosity* 2)
                       (linacs.log:info "Skipping ~a -- depends on prior failure" id)))
               (t
@@ -232,7 +232,9 @@ apply, and apply --dry-run all consume the same ActionPlan
     (let ((plan (make-action-plan :actions ordered
                                   :provenance (context-provenance)
                                   :results (context-results))))
+      (report-event (make-plan-started :plan plan))
       (unless (eq execute-mode :plan-only)
         (execute-plan ordered home :mode execute-mode :continue-on-error continue-on-error
                       :context context))
+      (report-event (make-plan-completed :plan plan))
       (values ordered home plan))))
