@@ -627,7 +627,9 @@ for facts-str = (let ((prov (action-provenance id)))
   (let ((candidates (find-providers-for fname)))
     (if candidates
         (format nil "~{~a~^, ~}"
-                (mapcar (lambda (p) (format nil "~(~a~)~a" (first p) (if (third p) " (default)" "")))
+                (mapcar (lambda (p) (format nil "~(~a~)~a"
+                                            (provider-name p)
+                                            (if (provider-default-p p) " (default)" "")))
                         (reverse candidates)))
         "(none registered)")))
 
@@ -652,13 +654,13 @@ for facts-str = (let ((prov (action-provenance id)))
   (terpri)
 
   (format t "Providers:~%")
-  (let ((rows (loop for fname being the hash-key of *providers* using (hash-value plist)
+  (let ((rows (loop for fname being the hash-key of *providers* using (hash-value providers)
                      append (mapcar (lambda (p)
-                                      (list (string-downcase (string (first p)))
+                                      (list (string-downcase (string (provider-name p)))
                                              (string-downcase (string fname))
-                                             (if (third p) "yes" "")
-                                             (or (fourth p) "")))
-                                    plist))))
+                                             (if (provider-default-p p) "yes" "")
+                                             (or (provider-description p) "")))
+                                    providers))))
     (if rows
         (print-table '("PROVIDER" "FOR FEATURE" "DEFAULT" "DESCRIPTION")
                      (sort rows #'string< :key (lambda (r) (format nil "~a:~a" (second r) (first r)))))
@@ -734,12 +736,12 @@ precedence over the request's own :via."
          (candidates (find-providers-for fname)))
     (cond
       ((null candidates) "NO PROVIDER REGISTERED")
-      (via (if (assoc via candidates) (string-downcase (string via))
+      (via (if (find via candidates :key #'provider-name) (string-downcase (string via))
                (format nil "VIA ~a NOT FOUND" via)))
-      ((= (length candidates) 1) (string-downcase (string (first (first candidates)))))
-      (t (let ((defaults (remove-if-not #'third candidates)))
+      ((= (length candidates) 1) (string-downcase (string (provider-name (first candidates)))))
+      (t (let ((defaults (remove-if-not #'provider-default-p candidates)))
            (cond
-             ((= (length defaults) 1) (string-downcase (string (first (first defaults)))))
+             ((= (length defaults) 1) (string-downcase (string (provider-name (first defaults)))))
              ((> (length defaults) 1) "MULTIPLE :DEFAULT T PROVIDERS -- AMBIGUOUS")
              (t "AMBIGUOUS -- needs :via, or mark one :default t")))))))
 

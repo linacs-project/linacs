@@ -82,6 +82,16 @@
     #:find-providers-for
     #:resolve-feature-graph
     #:select-provider
+    #:select-provider-object
+    ;; first-class provider object (REFACTOR.org Thought 9 / Action 9)
+    #:provider
+    #:make-provider
+    #:provide-actions
+    #:provider-name
+    #:provider-feature
+    #:provider-function
+    #:provider-default-p
+    #:provider-description
 
    ;; actions
    #:make-action
@@ -324,6 +334,11 @@
     #:register-action-type #:register-package-via-handler #:register-pipeline-hook
     #:register-repository-method
     #:register-sudo-requiring-action-type #:register-non-privileged-package-via
+    ;; provider object (REFACTOR.org Thought 9 / Action 9)
+    #:provider #:make-provider #:provide-actions
+    #:provider-name #:provider-feature #:provider-function
+    #:provider-default-p #:provider-description
+    #:select-provider-object
     ;; authoring helpers
     #:fact #:fact* #:fact-known-p #:feature-custom #:catalog-lookup
     #:action-type #:action-target #:action-source-label #:action-identity
@@ -405,6 +420,11 @@
     #:register-action-type #:register-package-via-handler #:register-pipeline-hook
     #:register-repository-method
     #:register-sudo-requiring-action-type #:register-non-privileged-package-via
+    ;; provider object (REFACTOR.org Thought 9 / Action 9)
+    #:provider #:make-provider #:provide-actions
+    #:provider-name #:provider-feature #:provider-function
+    #:provider-default-p #:provider-description
+    #:select-provider-object
     ;; authoring helpers
     #:fact #:fact* #:fact-known-p #:feature-custom #:catalog-lookup
     #:action-type #:action-target #:action-source-label #:action-identity

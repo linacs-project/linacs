@@ -30,10 +30,11 @@
                :serial t
                :components
                ((:file "graph")))
-     (:module "providers"
-               :serial t
-               :components
-               ((:file "macros")))
+(:module "providers"
+                :serial t
+                :components
+                ((:file "macros")
+                 (:file "first-class")))
 (:module "pipeline"
                 :serial t
                 :components

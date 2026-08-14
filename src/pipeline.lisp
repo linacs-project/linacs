@@ -83,26 +83,26 @@ alongside it."
     (loop for fname in ordered-features
           append (let* ((via (or (cdr (assoc fname provider-overrides))
                                  (gethash fname via-table)))
-                        (ignored (reset-facts-read)))
+                        (ignored (reset-facts-read))
+                        (provider (select-provider-object fname via)))
                    (declare (ignore ignored))
-                   (multiple-value-bind (provider-fn provider-name)
-                       (select-provider fname via)
-                     (report-event
-                      (make-feature-resolved :feature fname :provider provider-name))
-                     (let ((raw-actions (funcall provider-fn *facts*)))
+                   (report-event
+                    (make-feature-resolved :feature fname
+                                           :provider (and provider (provider-name provider))))
+                   (let ((raw-actions (and provider (provide-actions provider *facts*))))
                      (mapcar (lambda (a)
                                (let* ((id (action-identity a))
                                       (prov (list :feature fname
-                                                  :provider provider-name
+                                                  :provider (provider-name provider)
                                                   :facts-snapshot (snapshot-facts-read))))
                                  (register-provenance id prov)
                                  (append (copy-list a)
                                          (list :priority :provider
                                                :source (format nil "provider ~a for feature ~a"
-                                                               provider-name fname)
+                                                               (provider-name provider) fname)
                                                :project-root (or project-root *project-root*)
                                                :asset-root *asset-root*))))
-                             raw-actions)))))))
+                             raw-actions))))))
 
 (defun resolve-plan (&key profile project-root provider-overrides platform)
   "Run Execution Model steps 1-4: probe facts, merge profile, run home

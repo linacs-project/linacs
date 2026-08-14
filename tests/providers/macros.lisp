@@ -124,10 +124,10 @@ macroexpansion time, NIL if it completes."
     :description "Test editor provider"
     (lambda (facts) (declare (ignore facts)) nil))
   (let ((entry (first (linacs.core:find-providers-for :test-editor))))
-    (is (eq :test-emacs (first entry)))
-    (is (functionp (second entry)))
-    (is (eq t (third entry)))
-    (is (equal "Test editor provider" (fourth entry))))
+    (is (eq :test-emacs (linacs.core:provider-name entry)))
+    (is (functionp (linacs.core:provider-function entry)))
+    (is (eq t (linacs.core:provider-default-p entry)))
+    (is (equal "Test editor provider" (linacs.core:provider-description entry))))
   (reset-project-registries))
 
 (def-test define-provider-macro-rejects-misordered-args ()

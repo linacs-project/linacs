@@ -33,6 +33,11 @@
                (:file "profiles")
                (:file "catalogs")
                (:file "features")
+               (:module "provider-model"
+                        :pathname "domain"
+                        :serial t
+                        :components
+                        ((:file "provider")))
                (:file "providers")
                (:module "backends"
                         :pathname "backends/filesystem"

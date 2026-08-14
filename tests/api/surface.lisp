@@ -38,6 +38,10 @@ must be exportable from :linacs.api (i.e. findable there as EXTERNAL)."
                 "REGISTER-REPOSITORY-METHOD"
                 "REGISTER-SUDO-REQUIRING-ACTION-TYPE"
                 "REGISTER-NON-PRIVILEGED-PACKAGE-VIA"
+                "PROVIDER" "MAKE-PROVIDER" "PROVIDE-ACTIONS"
+                "PROVIDER-NAME" "PROVIDER-FEATURE" "PROVIDER-FUNCTION"
+                "PROVIDER-DEFAULT-P" "PROVIDER-DESCRIPTION"
+                "SELECT-PROVIDER-OBJECT"
                 "FACT" "FACT*" "FACT-KNOWN-P" "FEATURE-CUSTOM" "CATALOG-LOOKUP"
                 "ACTION-TYPE" "ACTION-TARGET" "ACTION-SOURCE-LABEL"
                 "ACTION-IDENTITY" "MAKE-ACTION" "PLIST->ACTION" "ACTION->PLIST"
@@ -77,7 +81,9 @@ must be exportable from :linacs.api (i.e. findable there as EXTERNAL)."
                   "USE-FEATURE" "FILE" "SECRET" "FACT" "REGISTER-PIPELINE-HOOK"
                   "REGISTER-FACT-PROBER" "RUN-PRIVILEGED"
                   "REGISTER-REPOSITORY-METHOD" "REPOSITORY"
-                  "DEFINE-DSL-FORM" "REGISTER-DSL-FORM")))))
+                  "DEFINE-DSL-FORM" "REGISTER-DSL-FORM"
+                  "PROVIDER" "MAKE-PROVIDER" "PROVIDE-ACTIONS"
+                  "PROVIDER-NAME" "SELECT-PROVIDER-OBJECT")))))
 
 (def-test api-consumer-package-sees-surface ()
   (is (consumer-package-finds-everything)

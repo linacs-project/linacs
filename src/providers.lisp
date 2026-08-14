@@ -1,12 +1,15 @@
 ;;;; src/providers.lisp
 ;;;;
-;;;; Provider registration and selection. A Provider is a plain function from
-;;;; facts to a list of action plists, registered against a feature name. A
-;;;; feature may have several providers; SELECT-PROVIDER picks one via an
+;;;; Provider registration and selection. A provider is a plain function from
+;;;; facts to a list of action plists, registered against a feature name,
+;;;; wrapped in a PROVIDER instance (see src/domain/provider.lisp). A feature
+;;;; may have several providers; SELECT-PROVIDER-OBJECT picks one via an
 ;;;; explicit :via, the sole provider if only one is registered, or the one
 ;;;; marked :default t if several are and exactly one is marked default --
 ;;;; otherwise it signals MISSING-PROVIDER with real SPECIFY-PROVIDER /
-;;;; SKIP-FEATURE restarts rather than guessing.
+;;;; SKIP-FEATURE restarts rather than guessing. SELECT-PROVIDER is a thin
+;;;; wrapper returning (values function name) for historic callers; selection
+;;;; results are identical to the pre-object representation.
 ;;;;
 ;;;; Usage:
 ;;;;     (define-provider :emacs :for :editor :default t :description "..."
@@ -15,8 +18,8 @@
 (in-package :linacs.core)
 
 (defvar *providers* (make-hash-table :test 'eq)
-  "Maps feature name -> list of (provider-name provider-function default-p
-description), one entry per registered provider for that feature.")
+  "Maps feature name -> list of PROVIDER instances, one entry per registered
+provider for that feature.")
 
 (defun register-provider (provider-name feature-name fn &key default description)
   "Programmatically register PROVIDER-NAME as an implementation of
@@ -24,9 +27,12 @@ FEATURE-NAME. Replaces any existing provider of the same name for that
 feature. Exists so the registration surface is consistent (every
 extension point has a REGISTER-* function); DEFINE-PROVIDER is a thin
 macro over this."
-  (let ((alist (remove provider-name (gethash feature-name *providers*) :key #'first)))
-    (push (list provider-name fn default description) alist)
-    (setf (gethash feature-name *providers*) alist)))
+  (let ((providers (remove provider-name (gethash feature-name *providers*)
+                           :key #'provider-name)))
+    (push (make-provider :name provider-name :feature feature-name :function fn
+                         :default-p default :description description)
+          providers)
+    (setf (gethash feature-name *providers*) providers)))
 
 (defun valid-provider-fn-form-p (form)
   "T if FORM is a plausible provider function form: a (lambda ...),
@@ -122,32 +128,40 @@ silently misparsed (see PARSE-PROVIDER-ARGS)."
                         :default ,default :description ,description)))
 
 (defun find-providers-for (feature-name)
+  "Every PROVIDER registered for FEATURE-NAME, as a list of PROVIDER
+instances (length 0 when none)."
   (gethash feature-name *providers*))
 
 (defun find-provider (provider-name &key for)
-  (second (assoc provider-name (gethash for *providers*))))
+  "The provider function of PROVIDER-NAME registered for feature FOR, or NIL.
+Returns the plain function (the historic contract, relied on by in-tree
+callers and plugin tests that funcall it); the instance itself is available
+via SELECT-PROVIDER-OBJECT."
+  (let ((provider (find provider-name (gethash for *providers*)
+                        :key #'provider-name)))
+    (and provider (provider-function provider))))
 
 (defun prompt-for-provider-name (candidates)
-  (format *query-io* "Provider name (one of ~{~a~^, ~}): " (mapcar #'first candidates))
+  (format *query-io* "Provider name (one of ~{~a~^, ~}): "
+          (mapcar #'provider-name candidates))
   (force-output *query-io*)
   (intern (string-upcase (read-line *query-io*)) :keyword))
 
-(defun select-provider (feature-name &optional via)
-  "Select a single provider function for FEATURE-NAME, returned as the
-primary value; the chosen provider's own name is returned as a second
-value (existing callers that only want the function are unaffected).
-VIA, if given, names a specific provider. If VIA is nil: with exactly one
-provider registered, that one is used; with several, the one registered
-:default t is used, if exactly one is so marked. Otherwise signals
-MISSING-PROVIDER, since LINACS never guesses between equally-plausible
-providers -- but offers real restarts to resolve it interactively (see
-SPECIFY-PROVIDER / SKIP-FEATURE below) rather than only ever aborting."
+(defun select-provider-object (feature-name &optional via)
+  "Select a single PROVIDER instance for FEATURE-NAME and return it. VIA, if
+given, names a specific provider. If VIA is nil: with exactly one provider
+registered, that one is used; with several, the one registered :default t is
+used, if exactly one is so marked. Otherwise signals MISSING-PROVIDER, since
+LINACS never guesses between equally-plausible providers -- but offers real
+restarts to resolve it interactively (see SPECIFY-PROVIDER / SKIP-FEATURE
+below) rather than only ever aborting. Returns NIL when the feature is
+skipped via the SKIP-FEATURE restart."
   (let ((candidates (find-providers-for feature-name)))
     (cond
       (via
-       (let ((entry (assoc via candidates)))
+       (let ((entry (find via candidates :key #'provider-name)))
          (if entry
-             (values (second entry) (first entry))
+             entry
              (error 'missing-provider :feature feature-name
                     :message (format nil "No provider ~a registered for feature ~a." via feature-name)))))
       ((null candidates)
@@ -155,32 +169,44 @@ SPECIFY-PROVIDER / SKIP-FEATURE below) rather than only ever aborting."
            (error 'missing-provider :feature feature-name)
          (skip-feature ()
            :report "Continue without this feature"
-           (values (lambda (facts) (declare (ignore facts)) nil) nil))))
+           nil)))
       ((= (length candidates) 1)
-       (values (second (first candidates)) (first (first candidates))))
+       (first candidates))
       (t
-       (let ((defaults (remove-if-not #'third candidates)))
+       (let ((defaults (remove-if-not #'provider-default-p candidates)))
          (cond
            ((= (length defaults) 1)
-            (values (second (first defaults)) (first (first defaults))))
+            (first defaults))
            ((> (length defaults) 1)
             (error 'missing-provider :feature feature-name
                    :message (format nil "Multiple providers for ~a are marked :default t (~{~a~^, ~}); only one may be."
-                                     feature-name (mapcar #'first defaults))))
+                                    feature-name (mapcar #'provider-name defaults))))
            (t
             (restart-case
                 (error 'missing-provider :feature feature-name
                        :message (format nil "Multiple providers registered for ~a (~{~a~^, ~}); specify :via, or mark one :default t."
-                                         feature-name (mapcar #'first candidates)))
+                                        feature-name (mapcar #'provider-name candidates)))
               (specify-provider (chosen)
                 :report "Manually select a provider"
                 :interactive (lambda () (list (prompt-for-provider-name candidates)))
-                (let ((entry (assoc chosen candidates)))
+                (let ((entry (find chosen candidates :key #'provider-name)))
                   (if entry
-                      (values (second entry) (first entry))
+                      entry
                       (error 'missing-provider :feature feature-name
                              :message (format nil "~a is not among the registered providers for ~a (~{~a~^, ~})."
-                                               chosen feature-name (mapcar #'first candidates))))))
+                                              chosen feature-name (mapcar #'provider-name candidates))))))
               (skip-feature ()
                 :report "Continue without this feature"
-                (values (lambda (facts) (declare (ignore facts)) nil) nil))))))))))
+                nil)))))))))
+
+(defun select-provider (feature-name &optional via)
+  "Select a single provider function for FEATURE-NAME, returned as the
+primary value; the chosen provider's own name is returned as a second value
+(existing callers that only want the function are unaffected). Thin wrapper
+over SELECT-PROVIDER-OBJECT, so selection results are identical to the
+historic 4-element-list representation and the :via override semantics are
+unchanged. When the feature is skipped via the SKIP-FEATURE restart, both
+values are NIL."
+  (let ((provider (select-provider-object feature-name via)))
+    (values (and provider (provider-function provider))
+            (and provider (provider-name provider)))))
