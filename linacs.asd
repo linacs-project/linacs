@@ -18,7 +18,7 @@
 
 (defsystem "linacs"
     :description "Declarative Linux home environment management"
-    :version "1.1.0"
+    :version "0.1.0"
     :depends-on ("asdf" "uiop")
     :serial t
     :components
