@@ -32,13 +32,18 @@
                (:file "facts")
                (:file "profiles")
                (:file "catalogs")
-               (:file "features")
+(:file "features")
                (:file "providers")
-               (:file "actions")
-               (:module "domain"
+               (:module "execution"
+                        :pathname "domain/execution"
                         :serial t
                         :components
-                        ((:module "action"
+                        ((:file "context")))
+               (:file "actions")
+               (:module "domain"
+                         :serial t
+                         :components
+                         ((:module "action"
                                   :serial t
                                   :components
                                    ((:file "action")

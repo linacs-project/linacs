@@ -41,7 +41,8 @@
                  (:file "disabled-actions")
                  (:file "hooks")
                  (:file "project-root")
-                 (:file "repository-prerequisites")))
+                 (:file "repository-prerequisites")
+                 (:file "execution-context")))
       (:module "cli"
                :serial t
                :components

@@ -60,56 +60,64 @@ that performed its work without reporting a status) becomes :applied."
         (otherwise     :applied))
       status))
 
-(defgeneric current-state (action)
+(defgeneric current-state (action &key context)
   (:documentation "Probe the current system state relevant to ACTION.
 Returns the system's present state as a plist, or NIL when the executor
 has not yet been split into probe/apply halves (today's executors conflate
 them).  The default method returns NIL; authors migrate an executor onto
 the state protocol by defining CURRENT-STATE and the other state generics
-for its action type.  Works on plists and ACTION instances."))
-(defmethod current-state ((action t))
-  (declare (ignorable action))
+for its action type.  Works on plists and ACTION instances.  CONTEXT is an
+optional EXECUTION-CONTEXT (REFACTOR.org Action 4) forwarded to any
+executor call."))
+(defmethod current-state ((action t) &key context)
+  (declare (ignorable action context))
   nil)
 
-(defgeneric desired-state (action)
+(defgeneric desired-state (action &key context)
   (:documentation "The desired system state for ACTION, as a plist.  The
 default method returns the action's plist itself -- today the declared
 intent IS the desired state, and DIFF-STATE compares against it via the
-executor.  Works on plists and ACTION instances."))
-(defmethod desired-state ((action t))
+executor.  Works on plists and ACTION instances.  CONTEXT is an optional
+EXECUTION-CONTEXT (REFACTOR.org Action 4)."))
+(defmethod desired-state ((action t) &key context)
+  (declare (ignorable context))
   (if (action-p action) (action->plist action) action))
 
-(defgeneric diff-state (action)
+(defgeneric diff-state (action &key context)
   (:documentation "Compare ACTION's desired state against the current system
 state and report what WOULD change.  Default: delegate to the registered
 executor in :check mode (EXECUTE-ACTION :mode :check), which is what `plan`,
 `diff`, and `--dry-run` consume.  Executor statuses pass through
 canonical (:would-change / :unchanged / :changed / :removed / :missing).
-Works on plists and ACTION instances."))
-(defmethod diff-state ((action t))
-  (execute-action action :mode :check))
+Works on plists and ACTION instances.  CONTEXT is an optional
+EXECUTION-CONTEXT (REFACTOR.org Action 4) forwarded to the executor call."))
+(defmethod diff-state ((action t) &key context)
+  (execute-action action :mode :check :context context))
 
-(defgeneric apply-state (action)
+(defgeneric apply-state (action &key context)
   (:documentation "Make the system match ACTION's desired state (idempotently).
 Default: delegate to the registered executor in :apply mode (EXECUTE-ACTION
 :mode :apply), with the returned status canonicalized to the execution
 spelling via EXECUTOR-STATUS (e.g. :changed -> :applied, :unchanged ->
-:already-met).  Works on plists and ACTION instances."))
-(defmethod apply-state ((action t))
-  (let* ((result (execute-action action :mode :apply))
+:already-met).  Works on plists and ACTION instances.  CONTEXT is an
+optional EXECUTION-CONTEXT (REFACTOR.org Action 4) forwarded to the
+executor call."))
+(defmethod apply-state ((action t) &key context)
+  (let* ((result (execute-action action :mode :apply :context context))
          (out (copy-list result)))
     (when (getf out :status)
       (setf (getf out :status) (executor-status (getf out :status) :mode :apply)))
     out))
 
-(defgeneric remove-state (action)
+(defgeneric remove-state (action &key context)
   (:documentation "Remove ACTION's artifact from the system (opt-in, for
 :disabled actions under the :prune-explicitly-disabled trait).  Default:
 delegate to the registered executor in :remove mode (EXECUTE-ACTION :mode
 :remove), canonicalizing the status exactly as APPLY-STATE does.  Works on
-plists and ACTION instances."))
-(defmethod remove-state ((action t))
-  (let* ((result (execute-action action :mode :remove))
+plists and ACTION instances.  CONTEXT is an optional EXECUTION-CONTEXT
+(REFACTOR.org Action 4) forwarded to the executor call."))
+(defmethod remove-state ((action t) &key context)
+  (let* ((result (execute-action action :mode :remove :context context))
          (out (copy-list result)))
     (when (getf out :status)
       (setf (getf out :status) (executor-status (getf out :status) :mode :apply)))

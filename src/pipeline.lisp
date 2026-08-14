@@ -31,27 +31,6 @@ accumulate duplicate hooks. Returns HOOK-FN."
   (dolist (hook (gethash point *pipeline-hooks*))
     (apply hook args)))
 
-(defvar *project-root* "."
-  "The project root, bound to the -C/--root value during resolution (step
-2 of the Execution Model) and execution. Providers and pipeline hooks
-read it to locate the project's assets -- e.g. deciding whether
-<name>/ exists for stow mode -- instead of (truename \".\"), which
-is wrong whenever linacs is invoked with -C from a different cwd.
-Provider actions are also tagged with an equivalent :project-root plist
-entry so the file-related executors (:copy-file, :stow, ...) resolve
-their :from/:target sources under it at execution time.")
-
-(defvar *asset-root* #P"./"
-  "The asset root: where :from sources and stow packages resolve, relative
-to the project root. Defaults to the project root itself (the convention
-is plain repo-root packages -- there is no files/ directory). A home may
-override it via DEFINE-HOME's :asset-root option -- e.g. :asset-root \"..\"
-when the linacs machinery lives in a linacs/ subfolder of a dotfiles repo
-whose packages sit at the repo root. RESOLVE-PLAN binds it to the
-absolute, canonicalized path for the whole resolution + execution scope
-and stamps it onto every action as :asset-root so executors resolve under
-it at execution time.")
-
 (defun resolve-asset-root (project-root home)
   "The absolute, canonicalized asset root for PROJECT-ROOT and HOME's
 :asset-root setting (a path relative to the project root; default \".\" --
@@ -170,51 +149,61 @@ locate their sources under it regardless of the invocation cwd."
       (run-hooks :before-execute *facts* ordered)
       (values ordered home))))
 
-(defun execute-plan (ordered home &key (mode :apply) continue-on-error)
+(defun execute-plan (ordered home &key (mode :apply) continue-on-error context)
   "Execute an already-resolved action plan (Execution Model step 5).
 MODE is :apply or :check. CONTINUE-ON-ERROR skips failed actions and
 their dependents rather than aborting the entire run.
-Returns ORDERED so callers can inspect *ACTION-RESULTS* afterward."
-  (preflight-notice ordered)
-  (preflight-sudo-prompt ordered)
+CONTEXT is an optional EXECUTION-CONTEXT (REFACTOR.org Action 4): when
+supplied, the execution-scope dynamic globals (facts, project/asset roots,
+*ACTION-RESULTS*, *PROVENANCE*, *PROGRESS-REPORTER*, ...) are bound FROM it
+for the duration of the run via WITH-EXECUTION-CONTEXT, and forwarded to
+each EXECUTE-ACTION call, so executors write their results into the
+context's tables rather than the globals. When NIL the historic dynamic
+globals are used unchanged.
+Returns ORDERED so callers can inspect the results afterward (via the
+context's results table, or *ACTION-RESULTS*)."
+  (with-execution-context context
+    (preflight-notice ordered)
+    (preflight-sudo-prompt ordered)
 
-  (let* ((prune (member :prune-explicitly-disabled (getf home :traits)))
-         (failed-ids (make-hash-table :test 'equal)))
-    (catch 'linacs-abort
-      (dolist (action ordered)
-        (let ((id (action-identity action)))
-          (cond
-            ((and (getf action :disabled) prune)
-             (execute-action action :mode (if (eq mode :apply) :remove :check)))
-            ((getf action :disabled)
-             (when *progress-reporter*
-               (funcall *progress-reporter* action :skipped))
-             nil)
-            ((and continue-on-error
-                  (some (lambda (dep) (gethash dep failed-ids))
-                        (getf action :depends-on)))
-             (setf (gethash id *action-results*) (list :status :skipped))
-             (when *progress-reporter*
-               (funcall *progress-reporter* action :skipped))
-             (when (>= linacs.log:*verbosity* 2)
-               (linacs.log:info "Skipping ~a -- depends on prior failure" id)))
-            (t
-             (handler-case
-                 ;; The interactive handler runs at signal time, while the
-                 ;; action's RETRY/SKIP/ABORT-PROCESSING restarts are still
-                 ;; live -- see HANDLE-LINACS-ERROR-INTERACTIVELY.
-                 (handler-bind ((linacs-error #'handle-linacs-error-interactively))
-                   (execute-action action :mode mode))
-               (linacs-error (e)
-                 (setf (gethash id *action-results*) (list :status :failed :error e))
-                 (setf (gethash id failed-ids) t)
-                 (if continue-on-error
-                     (linacs.log:warn* "~a failed; continuing" id)
-                     (error e))))))))))
+    (let* ((prune (member :prune-explicitly-disabled (getf home :traits)))
+           (failed-ids (make-hash-table :test 'equal)))
+      (catch 'linacs-abort
+        (dolist (action ordered)
+          (let ((id (action-identity action)))
+            (cond
+              ((and (getf action :disabled) prune)
+               (execute-action action :mode (if (eq mode :apply) :remove :check)
+                               :context context))
+              ((getf action :disabled)
+               (when *progress-reporter*
+                 (funcall *progress-reporter* action :skipped))
+               nil)
+              ((and continue-on-error
+                    (some (lambda (dep) (gethash dep failed-ids))
+                          (getf action :depends-on)))
+               (setf (gethash id *action-results*) (list :status :skipped))
+               (when *progress-reporter*
+                 (funcall *progress-reporter* action :skipped))
+               (when (>= linacs.log:*verbosity* 2)
+                 (linacs.log:info "Skipping ~a -- depends on prior failure" id)))
+              (t
+               (handler-case
+                   ;; The interactive handler runs at signal time, while the
+                   ;; action's RETRY/SKIP/ABORT-PROCESSING restarts are still
+                   ;; live -- see HANDLE-LINACS-ERROR-INTERACTIVELY.
+                   (handler-bind ((linacs-error #'handle-linacs-error-interactively))
+                     (execute-action action :mode mode :context context))
+                 (linacs-error (e)
+                   (setf (gethash id *action-results*) (list :status :failed :error e))
+                   (setf (gethash id failed-ids) t)
+                   (if continue-on-error
+                       (linacs.log:warn* "~a failed; continuing" id)
+                       (error e)))))))))))
   ordered)
 
 (defun run-pipeline (&key profile project-root (execute-mode :plan-only) continue-on-error
-                           provider-overrides platform)
+                           provider-overrides platform context)
   "Run Execution Model steps 1-5 against the already-discovered home
 definition (i.e. discovery, step 0, must already have run via
 DISCOVER-PLUGINS / DISCOVER-PROJECT). Composes RESOLVE-PLAN and
@@ -222,10 +211,13 @@ EXECUTE-PLAN. EXECUTE-MODE is :apply, :check, or :plan-only
 (resolve/order but do not call EXECUTE-ACTION at all).
 CONTINUE-ON-ERROR means skip failed actions and their dependents rather
 than aborting the entire run.
+CONTEXT is an optional EXECUTION-CONTEXT (REFACTOR.org Action 4) forwarded
+to EXECUTE-PLAN; when NIL EXECUTE-PLAN uses the historic dynamic globals.
 PROVIDER-OVERRIDES and PLATFORM are forwarded to RESOLVE-PLAN (see there)."
   (multiple-value-bind (ordered home)
       (resolve-plan :profile profile :project-root project-root
                     :provider-overrides provider-overrides :platform platform)
     (unless (eq execute-mode :plan-only)
-      (execute-plan ordered home :mode execute-mode :continue-on-error continue-on-error))
+      (execute-plan ordered home :mode execute-mode :continue-on-error continue-on-error
+                    :context context))
     (values ordered home)))

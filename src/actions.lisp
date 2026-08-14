@@ -47,32 +47,6 @@ same priority, warning instead of signaling ACTION-CONFLICT. Plugin authors
 declare the behavior for new action types via the :dedup-behavior keyword on
 REGISTER-ACTION-TYPE.")
 
-(defvar *provenance* (make-hash-table :test 'equal)
-  "Maps action identity -> provenance plist (:feature :provider :facts-snapshot
-or :source :location for user-level actions). Populated during pipeline step 2
-and never consulted in normal operation -- zero overhead during execution.")
-
-(defvar *action-results* (make-hash-table :test 'equal)
-  "Maps action identity -> result plist (:status :applied :already-met :failed
-or :skipped, and optionally :error for failures). Populated during pipeline
-step 5 by EXECUTE-ACTION. Used by --continue mode.")
-
-(defvar *progress-reporter* nil
-  "When non-nil, a function of (action phase &optional data) called by
-EXECUTE-ACTION before and after each action execution.  PHASE is :BEFORE,
-:AFTER, or :FAILED.  For :AFTER, DATA is the result plist.  For
-:FAILED, DATA is the condition.")
-
-(defvar *capture-subprocess-output* nil
-  "When non-nil, RUN-PRIVILEGED in helpers.lisp captures subprocess stdout/stderr
-into *CAPTURED-SUBPROCESS-LINES* instead of passing them through to the terminal.
-Used by `linacs apply` to show live progress glyphs without subprocess noise.")
-
-(defvar *captured-subprocess-lines* nil
-  "List of (stream-type . string) entries captured during subprocess execution
-when *CAPTURE-SUBPROCESS-OUTPUT* is non-nil.  Reset per-action in
-EXECUTE-ACTION.  Stream-type is :STDOUT or :STDERR.")
-
 (defun register-action-type (type executor-fn &key description identity dedup-behavior)
   (setf (gethash type *action-types*) executor-fn)
   (when description (setf (gethash type *action-type-descriptions*) description))
@@ -166,17 +140,20 @@ for new action types so ACTION-IDENTITY never needs a hardcoded cond chain:
         (cons type (action-target action)))))
 
 (defun register-provenance (action-id provenance)
-  "Record PROVENANCE plist for ACTION-ID in *PROVENANCE*."
-  (setf (gethash action-id *provenance*) provenance))
+  "Record PROVENANCE plist for ACTION-ID in the active context's provenance
+table (else *PROVENANCE*)."
+  (setf (gethash action-id (context-provenance)) provenance))
 
 (defun action-provenance (action-id)
-  "Retrieve the provenance plist for ACTION-ID from *PROVENANCE*, or NIL."
-  (gethash action-id *provenance*))
+  "Retrieve the provenance plist for ACTION-ID from the active context's
+provenance table (else *PROVENANCE*), or NIL."
+  (gethash action-id (context-provenance)))
 
 (defun action-result-status (action-id)
   "Retrieve the result status (:applied :already-met :failed :skipped) for
-ACTION-ID from *ACTION-RESULTS*, or NIL if not yet executed."
-  (let ((result (gethash action-id *action-results*)))
+ACTION-ID from the active context's results table (else *ACTION-RESULTS*),
+or NIL if not yet executed."
+  (let ((result (gethash action-id (context-results))))
     (and result (getf result :status))))
 
 (defgeneric action-source-label (action)
@@ -387,7 +364,7 @@ ignores :depends-on edges that reference an identity not present in ACTIONS
       (dolist (a actions) (visit a nil)))
     (nreverse result)))
 
-(defgeneric execute-action (action &key mode)
+(defgeneric execute-action (action &key mode context)
   (:documentation "Dispatch ACTION to its registered executor under MODE
 (:apply or :check). Records the outcome in *ACTION-RESULTS* for --continue
 support and verbose progress reporting.  Calls *PROGRESS-REPORTER* (if
@@ -397,15 +374,27 @@ ACCEPT APLISTS and ACTION objects alike: an ACTION instance is converted to
 its plist first (ACTION->PLIST), so executors keep receiving plists no
 matter which representation the caller chose.
 
+CONTEXT is an optional EXECUTION-CONTEXT (see domain/execution/context.lisp)
+owning the run's facts, project/asset roots, results and provenance tables,
+and progress/capture controls. When supplied, the execution-scope dynamic
+globals are bound FROM it for the duration of the executor call via
+WITH-EXECUTION-CONTEXT; when NIL the historic dynamic globals are used
+unchanged. Callers that build a context (EXECUTE-PLAN under a context)
+pass it through here so executors read its state.
+
 The RETRY / SKIP / ABORT-PROCESSING restarts are live for the duration of
 the executor call, with real bodies: RETRY re-runs the executor
 (recursively, re-establishing the restarts), SKIP records the action as
 skipped and moves on, and ABORT-PROCESSING stops the whole run via the
 LINACS-ABORT catch."))
 
-(defmethod execute-action ((action list) &key (mode :apply))
-  "EXECUTE-ACTION for a plist action: the full dispatch/recording body."
-  (let* ((id (action-identity action))
+(defmethod execute-action ((action list) &key (mode :apply) context)
+  "EXECUTE-ACTION for a plist action: the full dispatch/recording body.
+The execution-scope state is bound from CONTEXT (an EXECUTION-CONTEXT) for
+the duration of the executor call via WITH-EXECUTION-CONTEXT; when CONTEXT
+is NIL the historic dynamic globals are used unchanged."
+  (with-execution-context context
+    (let* ((id (action-identity action))
          (executor (find-executor (action-type action))))
     (setf *captured-subprocess-lines* nil)
     (when *progress-reporter*
@@ -456,4 +445,5 @@ LINACS-ABORT catch."))
                            (when *progress-reporter*
                              (funcall *progress-reporter* action :after result))
                            (values result status)))))))))
-      (run))))
+      (run)))))
+

@@ -113,6 +113,25 @@
     #:diff-state
     #:apply-state
     #:remove-state
+    ;; execution context (REFACTOR.org Action 4)
+    #:execution-context
+    #:make-execution-context
+    #:with-execution-context
+    #:*execution-context*
+    #:execution-context-facts
+    #:execution-context-project-root
+    #:execution-context-asset-root
+    #:execution-context-results
+    #:execution-context-provenance
+    #:execution-context-progress-reporter
+    #:execution-context-capture-subprocess-output
+    #:context-facts
+    #:context-project-root
+    #:context-asset-root
+    #:context-results
+    #:context-provenance
+    #:context-progress-reporter
+    #:context-capture-subprocess-output
     #:*action-identity-functions*
    #:register-action-type
    #:find-executor
@@ -261,6 +280,14 @@
     #:current-state #:desired-state #:diff-state #:apply-state #:remove-state
     #:report #:which #:shell-ok-p #:run-privileged #:expand-home
     #:*project-root* #:*asset-root* #:action-asset-root
+    ;; execution context (REFACTOR.org Action 4)
+    #:make-execution-context
+    #:with-execution-context
+    #:context-facts
+    #:context-project-root
+    #:context-asset-root
+    #:context-results
+    #:context-provenance
     ;; conditions
     #:linacs-error #:missing-provider #:action-conflict #:dsl-form-conflict
     #:execution-failure
@@ -305,6 +332,14 @@
     #:current-state #:desired-state #:diff-state #:apply-state #:remove-state
     #:report #:which #:shell-ok-p #:run-privileged #:expand-home
     #:*project-root* #:*asset-root* #:action-asset-root
+    ;; execution context (REFACTOR.org Action 4)
+    #:make-execution-context
+    #:with-execution-context
+    #:context-facts
+    #:context-project-root
+    #:context-asset-root
+    #:context-results
+    #:context-provenance
     ;; conditions
     #:linacs-error #:missing-provider #:action-conflict #:dsl-form-conflict
     #:execution-failure

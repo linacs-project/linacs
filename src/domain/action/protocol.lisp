@@ -134,11 +134,12 @@ unchanged."
 (defmethod action-dedup-behavior ((action action))
   (action-dedup-behavior (action->plist action)))
 
-(defmethod execute-action ((action action) &key (mode :apply))
+(defmethod execute-action ((action action) &key (mode :apply) context)
   "EXECUTE-ACTION for an ACTION instance: delegate to the plist method via
 ACTION->PLIST, so executors (which still speak plists) see exactly the same
-action as for a plist caller."
-  (execute-action (action->plist action) :mode mode))
+action as for a plist caller. CONTEXT is an optional EXECUTION-CONTEXT
+forwarded to the plist method."
+  (execute-action (action->plist action) :mode mode :context context))
 
 ;;; --- Per-type subclasses (pilot set) -------------------------------
 
