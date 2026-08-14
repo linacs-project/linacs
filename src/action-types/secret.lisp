@@ -10,11 +10,12 @@
 (in-package :linacs.core)
 
 (defun execute-secret (action &key mode)
-  (let* ((target (expand-home (action-target action))))
+  (let* ((fs (context-filesystem))
+         (target (expand-home (action-target action))))
     (case mode
       (:check
        ;; Do not resolve the secret source just to check -- report presence only.
-       (report (if (probe-file target) :unchanged :would-change) :target target))
+       (report (if (fs-exists-p fs target) :unchanged :would-change) :target target))
       (:apply
        (let* ((value (if (or (getf action :template) (getf action :renderer))
                           (render-template action)
@@ -22,17 +23,16 @@
                                                  :path (getf action :path)
                                                  :message (getf action :message))
                                            :target target)))
-              (current (read-file-string target))
+              (current (fs-read-file fs target))
               (changed (not (equal value current))))
          (when changed
-           (write-file-with-escalation target value)
-           (apply-file-ownership target action)
-           (set-file-mode target (or (getf action :mode) #o600)))
+           (fs-write-file fs target value)
+           (fs-apply-ownership fs target action)
+           (fs-set-mode fs target (or (getf action :mode) #o600)))
          (report (if changed :changed :unchanged) :target target)))
       (:remove
-       (when (probe-file target)
-         (handler-case (delete-file target)
-           (error () (run-privileged (list "rm" "-f" target)))))
+       (when (fs-exists-p fs target)
+         (fs-delete fs target))
        (report :removed :target target)))))
 
 (register-action-type :secret #'execute-secret

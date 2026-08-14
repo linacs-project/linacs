@@ -21,10 +21,11 @@
     (format nil "~{~a~%~}" (append kept missing))))
 
 (defun execute-config-lines (action &key mode)
-  (let* ((target (expand-home (action-target action)))
+  (let* ((fs (context-filesystem))
+         (target (expand-home (action-target action)))
          (ensure (getf action :ensure))
          (remove-list (getf action :remove))
-          (current (or (read-file-string target) ""))
+          (current (or (fs-read-file fs target) ""))
           ;; Normalize \r\n to \n for consistent comparison
           (current (remove #\Return current))
          (intended (compute-config-lines current ensure remove-list))
@@ -32,12 +33,12 @@
     (case mode
       (:check (report (if changed :would-change :unchanged) :target target))
       (:apply
-       (when changed (write-file-string target intended))
+       (when changed (fs-write-file fs target intended))
        (report (if changed :changed :unchanged) :target target))
       (:remove
        ;; Remove behavior: remove the ensured lines, add back the removed lines.
        (let* ((reverted (compute-config-lines current remove-list ensure)))
-         (write-file-string target reverted)
+         (fs-write-file fs target reverted)
          (report :removed :target target))))))
 
 (register-action-type :config-lines #'execute-config-lines

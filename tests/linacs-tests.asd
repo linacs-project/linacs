@@ -67,7 +67,13 @@
                :serial t
                :components
                ((:file "metadata")))
-(:module "executors"
+      (:module "backends"
+               :serial t
+               :pathname "backends/filesystem"
+               :components
+               ((:file "memory")
+                (:file "real")))
+      (:module "executors"
                 :serial t
                 :components
                 ((:file "copy-file")

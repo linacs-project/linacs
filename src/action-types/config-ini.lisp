@@ -49,21 +49,22 @@ preserving order, as an alist mapping section-name -> alist of key/value."
     sections))
 
 (defun execute-config-ini (action &key mode)
-  (let* ((target (expand-home (action-target action)))
+  (let* ((fs (context-filesystem))
+         (target (expand-home (action-target action)))
          (section (getf action :section))
          (set-alist (getf action :set))
          (unset-list (getf action :unset))
-         (current (or (read-file-string target) ""))
+         (current (or (fs-read-file fs target) ""))
          (sections (parse-ini current))
          (intended (render-ini (apply-ini-ops sections section set-alist unset-list)))
          (changed (not (equal (string-trim '(#\Newline) intended) (string-trim '(#\Newline) current)))))
     (case mode
       (:check (report (if changed :would-change :unchanged) :target target))
-      (:apply (when changed (write-file-string target intended))
+      (:apply (when changed (fs-write-file fs target intended))
               (report (if changed :changed :unchanged) :target target))
       (:remove
        (let ((reverted (render-ini (apply-ini-ops (parse-ini current) section nil (mapcar #'car set-alist)))))
-         (write-file-string target reverted)
+         (fs-write-file fs target reverted)
          (report :removed :target target))))))
 
 (register-action-type :config-ini #'execute-config-ini

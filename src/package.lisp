@@ -178,6 +178,17 @@
     #:event-plan #:event-feature #:event-provider #:event-action
     #:event-result #:event-error #:event-stream #:event-line
     #:report-event
+    ;; filesystem backend (REFACTOR.org Thought 11 / Action 8)
+    #:filesystem #:real-filesystem #:memory-filesystem #:recording-filesystem
+    #:make-real-filesystem #:make-memory-filesystem #:make-recording-filesystem
+    #:*filesystem* #:context-filesystem
+    #:fs-path-string #:fs-canonical-path #:fs-parent-path
+    #:fs-exists-p #:fs-directory-p #:fs-file-p #:fs-symlink-p
+    #:fs-read-link #:fs-directory-entries #:fs-read-file #:fs-truename
+    #:fs-file-mode
+    #:fs-make-directory #:fs-write-file #:fs-symlink #:fs-delete
+    #:fs-rmdir #:fs-delete-directory-tree #:fs-set-mode #:fs-set-owner
+    #:fs-apply-ownership
    #:register-action-type
    #:find-executor
    #:execute-action
@@ -333,6 +344,16 @@
     #:context-asset-root
     #:context-results
     #:context-provenance
+    #:context-filesystem
+    ;; filesystem backend (REFACTOR.org Thought 11 / Action 8)
+    #:filesystem #:real-filesystem #:memory-filesystem #:recording-filesystem
+    #:make-real-filesystem #:make-memory-filesystem #:make-recording-filesystem
+    #:fs-exists-p #:fs-directory-p #:fs-file-p #:fs-symlink-p
+    #:fs-read-link #:fs-directory-entries #:fs-read-file #:fs-truename
+    #:fs-file-mode
+    #:fs-make-directory #:fs-write-file #:fs-symlink #:fs-delete
+    #:fs-rmdir #:fs-delete-directory-tree #:fs-set-mode #:fs-set-owner
+    #:fs-apply-ownership
     ;; execution results / provenance / plan (REFACTOR.org Action 5)
     #:action-result #:make-action-result
     #:result-action #:result-status #:result-error
@@ -404,6 +425,16 @@
     #:context-asset-root
     #:context-results
     #:context-provenance
+    #:context-filesystem
+    ;; filesystem backend (REFACTOR.org Thought 11 / Action 8)
+    #:filesystem #:real-filesystem #:memory-filesystem #:recording-filesystem
+    #:make-real-filesystem #:make-memory-filesystem #:make-recording-filesystem
+    #:fs-exists-p #:fs-directory-p #:fs-file-p #:fs-symlink-p
+    #:fs-read-link #:fs-directory-entries #:fs-read-file #:fs-truename
+    #:fs-file-mode
+    #:fs-make-directory #:fs-write-file #:fs-symlink #:fs-delete
+    #:fs-rmdir #:fs-delete-directory-tree #:fs-set-mode #:fs-set-owner
+    #:fs-apply-ownership
     ;; execution results / provenance / plan (REFACTOR.org Action 5)
     #:action-result #:make-action-result
     #:result-action #:result-status #:result-error

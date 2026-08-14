@@ -32,8 +32,15 @@
                (:file "facts")
                (:file "profiles")
                (:file "catalogs")
-(:file "features")
+               (:file "features")
                (:file "providers")
+               (:module "backends"
+                        :pathname "backends/filesystem"
+                        :serial t
+                        :components
+                        ((:file "filesystem")
+                         (:file "memory")
+                         (:file "recording")))
                (:module "execution"
                         :pathname "domain/execution"
                         :serial t
@@ -87,8 +94,15 @@
                          (:file "cron")
                          (:file "command")
                          (:file "clone")
-                         (:file "repository")
-                         (:file "stow")))
+                          (:file "repository")
+                          (:file "stow")))
+               ;; The real filesystem backend loads after action-types/helpers
+               ;; so its methods can use the escalate-on-demand helpers.
+               (:module "backends-real"
+                        :pathname "backends/filesystem"
+                        :serial t
+                        :components
+                        ((:file "real")))
                (:file "pipeline")
                (:file "privilege")
                (:file "dsl")

@@ -76,10 +76,18 @@ Used by `linacs apply` to show live progress glyphs without subprocess noise.")
 when *CAPTURE-SUBPROCESS-OUTPUT* is non-nil.  Reset per-action in
 EXECUTE-ACTION.  Stream-type is :STDOUT or :STDERR.")
 
+(defvar *filesystem* nil
+  "The active filesystem backend (see backends/filesystem/), dynamically
+bound by WITH-EXECUTION-CONTEXT from the context's slot. When NIL -- no
+context in play, or the context carries no filesystem -- CONTEXT-FILESYSTEM
+creates a REAL-FILESYSTEM lazily, so historic behavior is unchanged.")
+
 (defclass execution-context ()
   ((facts     :initarg :facts     :initform nil :reader execution-context-facts)
+   (filesystem :initarg :filesystem :initform nil
+               :reader execution-context-filesystem)
    (project-root :initarg :project-root :initform nil
-                 :reader execution-context-project-root)
+                  :reader execution-context-project-root)
    (asset-root   :initarg :asset-root   :initform nil
                  :reader execution-context-asset-root)
    (results   :initarg :results   :initform nil :reader execution-context-results)
@@ -90,21 +98,23 @@ EXECUTE-ACTION.  Stream-type is :STDOUT or :STDERR.")
    (capture-subprocess-output :initarg :capture-subprocess-output :initform nil
                               :reader execution-context-capture-subprocess-output))
   (:documentation "Owns the execution-scope state for one run: facts,
-project/asset roots, the results and provenance tables, and the
-progress/capture controls. Construct via MAKE-EXECUTION-CONTEXT (seeded
-from the current dynamic globals) and run executors under it with
-WITH-EXECUTION-CONTEXT, or pass it through EXECUTE-PLAN/EXECUTE-ACTION's
-:CONTEXT argument."))
+project/asset roots, the results and provenance tables, the filesystem
+backend, and the progress/capture controls. Construct via
+MAKE-EXECUTION-CONTEXT (seeded from the current dynamic globals) and run
+executors under it with WITH-EXECUTION-CONTEXT, or pass it through
+EXECUTE-PLAN/EXECUTE-ACTION's :CONTEXT argument."))
 
-(defun make-execution-context (&key facts project-root asset-root results provenance
+(defun make-execution-context (&key facts filesystem project-root asset-root
+                                  results provenance
                                   progress-reporter capture-subprocess-output)
   "Construct an EXECUTION-CONTEXT.  Any slot not supplied is seeded from
-the current dynamic globals (*FACTS*, *PROJECT-ROOT*, *ASSET-ROOT*,
-*ACTION-RESULTS*, *PROVENANCE*, *PROGRESS-REPORTER*,
+the current dynamic globals (*FACTS*, *FILESYSTEM*, *PROJECT-ROOT*,
+*ASSET-ROOT*, *ACTION-RESULTS*, *PROVENANCE*, *PROGRESS-REPORTER*,
 *CAPTURE-SUBPROCESS-OUTPUT*), so a bare (make-execution-context) captures
 today's whole environment and behavior is unchanged."
   (make-instance 'execution-context
                  :facts (or facts *facts*)
+                 :filesystem (or filesystem *filesystem*)
                  :project-root (or project-root *project-root*)
                  :asset-root (or asset-root *asset-root*)
                  :results (or results *action-results*)
@@ -116,17 +126,18 @@ today's whole environment and behavior is unchanged."
 (defmacro with-execution-context (context &body body)
   "Bind the execution dynamic globals from CONTEXT (an EXECUTION-CONTEXT)
 for the duration of BODY, so executors that read *FACTS*, *PROJECT-ROOT*,
-*ASSET-ROOT*, *ACTION-RESULTS*, *PROVENANCE*, *PROGRESS-REPORTER*, and
-*CAPTURE-SUBPROCESS-OUTPUT* see the context's state.  Slots that are NIL
-fall through to the ambient dynamic value.  Establishes *EXECUTION-CONTEXT*
-so the CONTEXT-* combinators resolve too.  A NIL CONTEXT is a no-op: the
-historic dynamic globals remain in effect (useful for defaulted &key args
-such as EXECUTE-PLAN's)."
+*ASSET-ROOT*, *FILESYSTEM*, *ACTION-RESULTS*, *PROVENANCE*,
+*PROGRESS-REPORTER*, and *CAPTURE-SUBPROCESS-OUTPUT* see the context's
+state.  Slots that are NIL fall through to the ambient dynamic value.
+Establishes *EXECUTION-CONTEXT* so the CONTEXT-* combinators resolve too.
+A NIL CONTEXT is a no-op: the historic dynamic globals remain in effect
+(useful for defaulted &key args such as EXECUTE-PLAN's)."
   (let ((ctx (gensym "CTX")))
     `(let ((,ctx ,context))
        (if ,ctx
            (let ((*execution-context* ,ctx)
                  (*facts* (or (execution-context-facts ,ctx) *facts*))
+                 (*filesystem* (or (execution-context-filesystem ,ctx) *filesystem*))
                  (*project-root* (or (execution-context-project-root ,ctx) *project-root*))
                  (*asset-root* (or (execution-context-asset-root ,ctx) *asset-root*))
                  (*action-results* (or (execution-context-results ,ctx) *action-results*))
@@ -175,3 +186,12 @@ such as EXECUTE-PLAN's)."
   (if *execution-context*
       (or (execution-context-progress-reporter *execution-context*) *progress-reporter*)
       *progress-reporter*))
+
+(defun context-filesystem ()
+  "The filesystem backend of the active execution context, else the ambient
+  *FILESYSTEM*. When neither is set, lazily creates and caches a
+  REAL-FILESYSTEM, so historic behavior -- executors hitting the host
+  filesystem with no context in play -- is unchanged."
+  (or (and *execution-context* (execution-context-filesystem *execution-context*))
+      *filesystem*
+      (setf *filesystem* (make-instance 'real-filesystem))))

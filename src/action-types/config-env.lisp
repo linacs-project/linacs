@@ -21,9 +21,10 @@
   (format nil "~{~a=~a~%~}" (loop for (k . v) in alist append (list k v))))
 
 (defun execute-config-env (action &key mode)
-  (let* ((target (expand-home (action-target action)))
+  (let* ((fs (context-filesystem))
+         (target (expand-home (action-target action)))
          (set-alist (getf action :set))
-         (current (or (read-file-string target) ""))
+         (current (or (fs-read-file fs target) ""))
          (parsed (parse-env-file current))
          (merged (dolist (kv set-alist parsed)
                    (let ((existing (assoc (car kv) parsed :test #'equal)))
@@ -32,11 +33,11 @@
          (changed (not (equal intended current))))
     (case mode
       (:check (report (if changed :would-change :unchanged) :target target))
-      (:apply (when changed (write-file-string target intended))
+      (:apply (when changed (fs-write-file fs target intended))
               (report (if changed :changed :unchanged) :target target))
       (:remove
        (let ((kept (remove-if (lambda (kv) (assoc (car kv) set-alist :test #'equal)) parsed)))
-         (write-file-string target (render-env-file kept))
+         (fs-write-file fs target (render-env-file kept))
          (report :removed :target target))))))
 
 (register-action-type :config-env #'execute-config-env
