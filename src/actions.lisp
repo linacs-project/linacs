@@ -82,23 +82,83 @@ EXECUTE-ACTION.  Stream-type is :STDOUT or :STDERR.")
 (defun action-type-description (type)
   (or (gethash type *action-type-descriptions*) ""))
 
+(defgeneric action-description (action)
+  (:documentation "The one-line description registered for ACTION's type
+(via REGISTER-ACTION-TYPE :description), or \"\" if none. Works on plists
+and ACTION instances."))
+(defmethod action-description ((action list))
+  (action-type-description (action-type action)))
+
+(defgeneric action-dedup-behavior (action)
+  (:documentation "The dedup behavior of ACTION's type: :conflict (default)
+or :additive. Works on plists and ACTION instances; delegates to
+*ACTION-TYPE-DEDUP-BEHAVIOR*, registered via REGISTER-ACTION-TYPE
+:dedup-behavior."))
+(defmethod action-dedup-behavior ((action list))
+  (or (gethash (action-type action) *action-type-dedup-behavior*) :conflict))
+
 (defun find-executor (type)
   (or (gethash type *action-types*)
       (error 'execution-failure :action-type type :target nil
              :underlying (format nil "No executor registered for action type ~a" type))))
 
-(defun action-type (action) (getf action :action))
-(defun action-target (action) (or (getf action :target) (getf action :to)))
+(defgeneric action-type (action)
+  (:documentation "The action type keyword for ACTION (a plist or an
+ACTION instance), e.g. :COPY-FILE."))
+(defmethod action-type ((action list)) (getf action :action))
 
-(defun action-identity (action)
-  "Compute the canonical identity for ACTION. Delegates to the type's
-registered identity function in *ACTION-IDENTITY-FUNCTIONS* (set via
-REGISTER-ACTION-TYPE :identity), or falls back to (type . target).
-Plugin authors register identity functions for new action types so
-ACTION-IDENTITY never needs a hardcoded cond chain:
+(defgeneric action-target (action)
+  (:documentation "The primary target of ACTION (a plist or an ACTION
+instance). For plists, prefers :TARGET over :TO (the DSL's FILE form
+historically emitted both). ACTION instances store a single canonical
+TARGET slot; subclasses map :TO-only keys onto it at construction."))
+(defmethod action-target ((action list)) (or (getf action :target) (getf action :to)))
+
+(defgeneric action-priority (action)
+  (:documentation "The priority (:user or :provider) of ACTION, a plist or
+an ACTION instance. Defaults to :provider when unset."))
+(defmethod action-priority ((action list)) (or (getf action :priority) :provider))
+
+(defgeneric action-force (action)
+  (:documentation "NIL, or T if ACTION (a plist or an ACTION instance) wins
+any identity conflict outright."))
+(defmethod action-force ((action list)) (getf action :force))
+
+(defgeneric action-disabled (action)
+  (:documentation "NIL, or T if ACTION (a plist or an ACTION instance) is
+marked for explicit removal (subject to the :prune-explicitly-disabled trait)."))
+(defmethod action-disabled ((action list)) (getf action :disabled))
+
+(defgeneric action-depends-on (action)
+  (:documentation "ACTION's explicit :depends-on identity edges (a plist or
+an ACTION instance)."))
+(defmethod action-depends-on ((action list)) (getf action :depends-on))
+
+(defgeneric action-source (action)
+  (:documentation "Human-readable origin label of ACTION, a plist or an
+ACTION instance."))
+(defmethod action-source ((action list)) (getf action :source))
+
+(defgeneric action-location (action)
+  (:documentation "PLACEBOOK location plist (:file ...) of ACTION, a plist
+or an ACTION instance."))
+(defmethod action-location ((action list)) (getf action :location))
+
+(defgeneric action-project-root (action)
+  (:documentation "Stamped --root value on ACTION, a plist or an ACTION
+instance."))
+(defmethod action-project-root ((action list)) (getf action :project-root))
+
+(defgeneric action-identity (action)
+  (:documentation "Compute the canonical identity for ACTION (a plist or an
+ACTION instance). Delegates to the type's registered identity function in
+*ACTION-IDENTITY-FUNCTIONS* (set via REGISTER-ACTION-TYPE :identity), or
+falls back to (type . target). Plugin authors register identity functions
+for new action types so ACTION-IDENTITY never needs a hardcoded cond chain:
 
     (register-action-type :my-type #'my-executor
-      :identity (lambda (a) (list :my-type (getf a :qualifier) (action-target a))))"
+      :identity (lambda (a) (list :my-type (getf a :qualifier) (action-target a))))"))
+(defmethod action-identity ((action list))
   (let* ((type (action-type action))
          (fn (gethash type *action-identity-functions*)))
     (if fn
@@ -119,13 +179,31 @@ ACTION-ID from *ACTION-RESULTS*, or NIL if not yet executed."
   (let ((result (gethash action-id *action-results*)))
     (and result (getf result :status))))
 
-(defun action-source-label (action)
-  "Human-readable label of where ACTION came from, for conflict reports."
+(defgeneric action-source-label (action)
+  (:documentation "Human-readable label of where ACTION came from, for
+conflict reports. Works on plists and ACTION instances."))
+(defmethod action-source-label ((action list))
   (or (getf action :source) "unspecified"))
 
-(defun same-action-content-p (a b)
-  "Two actions are content-equal if their plists are EQUAL once :source,
-:priority, and identity-irrelevant bookkeeping keys are stripped."
+(defgeneric action->plist (action)
+  (:documentation "The plist form of ACTION. For an ACTION instance, the
+canonical, lossless plist reconstruction (defined in protocol.lisp); for a
+plist, the plist itself. The conversion seam between the CLOS object model
+and the external plist convention."))
+(defmethod action->plist ((action list)) action)
+
+(defun action-p (object)
+  "T if OBJECT is an ACTION instance (as opposed to a plist). Uses
+FIND-CLASS so this can be compiled before the ACTION class is defined."
+  (and (not (listp object))
+       (let ((class (find-class 'action nil)))
+         (and class (typep object class)))))
+
+(defgeneric same-action-content-p (a b)
+  (:documentation "Two actions are content-equal if their plists are EQUAL
+once :source, :priority, and identity-irrelevant bookkeeping keys are
+stripped. Works on plists and ACTION instances."))
+(defmethod same-action-content-p ((a list) (b list))
   (flet ((strip (a) (let ((c (copy-list a)))
                        (remf c :source)
                        (remf c :priority)
@@ -250,23 +328,23 @@ even for additive types."
           ((null existing)
            (setf (gethash id by-identity) action)
            (push action result))
-          ((getf action :force)
+          ((action-force action)
            (setf result (substitute action existing result))
            (setf (gethash id by-identity) action))
-          ((getf existing :force)
+          ((action-force existing)
            nil) ; existing already forced; keep it, drop new
           ((same-action-content-p action existing)
            nil) ; identical, drop the duplicate silently
           (t
-           (let ((pa (or (getf action :priority) :provider))
-                 (pe (or (getf existing :priority) :provider)))
+           (let ((pa (action-priority action))
+                 (pe (action-priority existing)))
              (cond
                ((and (eq pa :user) (eq pe :provider))
                 (setf result (substitute action existing result))
                 (setf (gethash id by-identity) action))
                ((and (eq pa :provider) (eq pe :user))
                 nil) ; existing user-level def wins, drop provider action
-               ((eq (gethash (action-type action) *action-type-dedup-behavior*) :additive)
+               ((eq (action-dedup-behavior action) :additive)
                 (linacs.log:warn* "Duplicate ~a identity for ~a; keeping both, continuing."
                                   (action-type action) (action-target action))
                 (push action result))
@@ -299,8 +377,8 @@ ignores :depends-on edges that reference an identity not present in ACTIONS
                    ((gethash id visiting)
                     (error 'dependency-cycle :cycle (reverse (cons id path))))
                    (t
-                    (setf (gethash id visiting) t)
-                    (dolist (dep-id (getf action :depends-on))
+                     (setf (gethash id visiting) t)
+                     (dolist (dep-id (action-depends-on action))
                       (let ((dep (gethash dep-id id->action)))
                         (when dep (visit dep (cons id path)))))
                     (remhash id visiting)
@@ -309,15 +387,24 @@ ignores :depends-on edges that reference an identity not present in ACTIONS
       (dolist (a actions) (visit a nil)))
     (nreverse result)))
 
-(defun execute-action (action &key (mode :apply))
-  "Dispatch ACTION to its registered executor under MODE (:apply or :check).
-Records the outcome in *ACTION-RESULTS* for --continue support and verbose
-progress reporting.  Calls *PROGRESS-REPORTER* (if bound) before and after.
+(defgeneric execute-action (action &key mode)
+  (:documentation "Dispatch ACTION to its registered executor under MODE
+(:apply or :check). Records the outcome in *ACTION-RESULTS* for --continue
+support and verbose progress reporting.  Calls *PROGRESS-REPORTER* (if
+bound) before and after.
+
+ACCEPT APLISTS and ACTION objects alike: an ACTION instance is converted to
+its plist first (ACTION->PLIST), so executors keep receiving plists no
+matter which representation the caller chose.
 
 The RETRY / SKIP / ABORT-PROCESSING restarts are live for the duration of
-the executor call, with real bodies: RETRY re-runs the executor (recursively,
-re-establishing the restarts), SKIP records the action as skipped and moves
-on, and ABORT-PROCESSING stops the whole run via the LINACS-ABORT catch."
+the executor call, with real bodies: RETRY re-runs the executor
+(recursively, re-establishing the restarts), SKIP records the action as
+skipped and moves on, and ABORT-PROCESSING stops the whole run via the
+LINACS-ABORT catch."))
+
+(defmethod execute-action ((action list) &key (mode :apply))
+  "EXECUTE-ACTION for a plist action: the full dispatch/recording body."
   (let* ((id (action-identity action))
          (executor (find-executor (action-type action))))
     (setf *captured-subprocess-lines* nil)

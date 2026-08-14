@@ -11,9 +11,11 @@
      (:module "actions"
                :serial t
                :components
-               ((:file "identity")
-                (:file "dedup")
-                (:file "ordering")))
+((:file "identity")
+                  (:file "dedup")
+                  (:file "ordering")
+                  (:file "object-model")
+                  (:file "protocol")))
      (:module "dsl"
                :serial t
                :components

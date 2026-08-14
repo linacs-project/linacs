@@ -35,6 +35,15 @@
                (:file "features")
                (:file "providers")
                (:file "actions")
+               (:module "domain"
+                        :serial t
+                        :components
+                        ((:module "action"
+                                  :serial t
+                                  :components
+                                   ((:file "action")
+                                    (:file "protocol")
+                                    (:file "state")))))
                (:file "secrets")
                (:file "templates")
                (:module "action-types"
