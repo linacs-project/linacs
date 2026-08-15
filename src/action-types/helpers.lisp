@@ -282,9 +282,11 @@ backend-detection probes."
   (shell-ok-p (format nil "command -v ~a >/dev/null 2>&1" program)))
 
 (defparameter *sudo-requiring-action-types*
-  '(:package :service :timer :user :group :mount :sysctl :kernel-module
+  '(:package :user :group :mount :sysctl :kernel-module
     :hostname :firewall :locale :cron)
   "Action types whose executors unconditionally call RUN-PRIVILEGED.
+:service and :timer are NOT listed -- their privilege need is scope-driven
+and resolved through the service backend by ACTION-NEEDS-PRIVILEGE-P.
 Used by ACTION-NEEDS-PRIVILEGE-P to estimate how many actions in a plan
 will need a sudo password. Plugins add entries via
 REGISTER-SUDO-REQUIRING-ACTION-TYPE.")
@@ -320,7 +322,11 @@ property. Idempotent: registering the same pattern twice has no effect."
 Covers :package actions (minus non-privileged vias -- whether declared by the
 package backend's privileged-p, e.g. flatpak :scope :user or appimage, or by
 a registered non-privileged pattern in *NON-PRIVILEGED-PACKAGE-VIAS*) and any
-action type whose executor unconditionally calls RUN-PRIVILEGED."
+action type whose executor unconditionally calls RUN-PRIVILEGED. :service
+resolves its privilege need through the service backend by :scope (:system →
+the :systemd backend, privileged; :user → :systemd-user, not); :timer always
+resolves through :systemd-user (user-scope timers never need sudo). A missing
+backend is conservatively assumed privileged."
   (flet ((matches-non-privileged-p (pattern)
            (loop for (prop val) on pattern by #'cddr
                  always (equal (getf action prop) val))))
@@ -331,7 +337,21 @@ action type whose executor unconditionally calls RUN-PRIVILEGED."
                  (and backend (not (backend-needs-privilege-p backend action)))))
           (not (or (some #'matches-non-privileged-p *non-privileged-package-vias*)
                    backend-non-privileged)))
-        (member (action-type action) *sudo-requiring-action-types*))))
+        (case (action-type action)
+          (:timer
+           ;; Timers are always user-scope (~/.config/systemd/user); the
+           ;; action carries no :scope key, so always resolve the
+           ;; :systemd-user backend.
+           (let ((backend (find-service-backend :systemd-user)))
+             (or (null backend)
+                 (service-backend-privileged-p backend))))
+          (:service
+           (let* ((scope (getf action :scope :system))
+                  (backend (find-service-backend
+                            (if (eq scope :user) :systemd-user :systemd))))
+             (or (null backend)
+                 (service-backend-privileged-p backend))))
+          (t (member (action-type action) *sudo-requiring-action-types*))))))
 
 (defun preflight-sudo-prompt (ordered-actions)
   "If the plan contains actions that will need sudo, prompt for the

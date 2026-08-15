@@ -185,7 +185,8 @@ CLASS-NAME in *ACTION-CLASSES*."
   :slots nil)
 
 (define-action service-action :service
-  :slots ((enabled :enabled service-enabled)
+  :slots ((scope    :scope    service-scope)
+          (enabled :enabled service-enabled)
           (running :running service-running)))
 
 (define-action symlink-action :symlink

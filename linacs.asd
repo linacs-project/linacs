@@ -51,14 +51,27 @@
                          ((:file "filesystem")
                           (:file "memory")
                           (:file "recording")))
-               ;; The package-backend protocol loads here, before action-types,
-               ;; so helpers.lisp and package-action.lisp can reference
-               ;; FIND-PACKAGE-BACKEND / EXECUTE-PACKAGE-BACKEND.
+               ;; The backend protocols load here, before action-types, so
+               ;; helpers.lisp and the executors can reference
+               ;; FIND-PACKAGE-BACKEND / FIND-SERVICE-BACKEND /
+               ;; FIND-REPOSITORY-BACKEND. These protocol files funcall the
+               ;; functions stored on their backends -- no dependency on the
+               ;; action model or the REPORT helper.
                (:module "package-backend"
                          :pathname "backends/packages"
                          :serial t
                          :components
                          ((:file "package-backend")))
+               (:module "service-backend"
+                         :pathname "backends/services"
+                         :serial t
+                         :components
+                         ((:file "service-backend")))
+               (:module "repository-backend"
+                         :pathname "backends/repositories"
+                         :serial t
+                         :components
+                         ((:file "repository-backend")))
                (:module "execution"
                         :pathname "domain/execution"
                         :serial t
@@ -129,6 +142,14 @@
                          :serial t
                          :components
                          ((:file "backends")))
+               ;; The built-in service backends (systemd / systemd-user) load
+               ;; here too, after action-types/helpers.lisp, so their
+               ;; primitives can reference RUN-PRIVILEGED.
+               (:module "service-backends"
+                         :pathname "backends/services"
+                         :serial t
+                         :components
+                         ((:file "systemd")))
                (:file "pipeline")
                (:file "privilege")
                (:file "dsl")

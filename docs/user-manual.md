@@ -912,7 +912,8 @@ map of what's extensible and where it's registered:
 | Document a profile-only fact (no prober) | `declare-fact-source` | a project's `profiles/*.lisp` |
 | Cross-cutting behavior (audit logging, a confirmation prompt) | `register-pipeline-hook` | a project's `hooks/*.lisp` |
 | A new `:via` backend for the `:package` action type | `register-package-backend` | a plugin, or a project's `providers/*.lisp` |
-| A distro repository method (e.g. `:dnf-copr`, `:apt-ppa`) | `register-repository-method` | a distro plugin's `distributions/*` |
+| A mechanism for the `:service`/`:timer` action types (e.g. `:openrc`, `:runit`) | `register-service-backend` | a plugin |
+| A distro repository backend (e.g. `:dnf-copr`, `:apt-ppa`) | `register-repository-backend` | a distro plugin's `distributions/*` |
 | A template renderer | a `RENDER-*` function | a project's `templates/*.lisp` |
 | **A genuinely new action type** (rare — `:command` covers most cases) | `register-action-type` | a plugin, or a change to `src/action-types/` if it belongs in the core |
 | Mark an action type as needing sudo | `register-sudo-requiring-action-type` | a plugin |
@@ -946,12 +947,17 @@ registered at load time. Look at any file in `src/action-types/` as a
 template for a full action type; `command.lisp` is the simplest complete
 example.
 
-A repository method works the same way: `register-repository-method`
-takes three functions — `:present-p`, `:ensure`, and `:remove` — and the
-`:repository` executor dispatches to them (see §5.21). Distro plugins
-pair the method with a `:repositories` catalog entry, and core
-auto-inserts the repository action ahead of any `:system` package that
-needs it (see §5.16).
+A repository backend works the same way: `register-repository-backend`
+takes a `make-repository-backend` result carrying three functions —
+`:present-p`, `:ensure`, and `:remove` — and the `:repository` executor
+dispatches to them (see §5.21). Distro plugins pair the backend with a
+`:repositories` catalog entry, and core auto-inserts the repository
+action ahead of any `:system` package that needs it (see §5.16). The
+`:service`/`:timer` executors work the same way over
+`register-service-backend` backends; core ships the `:systemd` (system
+scope, needs sudo) and `:systemd-user` (user scope, never needs sudo)
+backends, and the `:service` action's `:scope` option selects between
+them.
 
 If your new action type's executor calls `sudo` unconditionally, register
 it with `register-sudo-requiring-action-type` so the plan/apply privilege
@@ -1667,7 +1673,7 @@ spec plist instead of a plain string:
 
 ```lisp
 ;; A distro plugin defines the catalog (here: Fedora, using the
-;; :dnf-copr method registered via register-repository-method):
+;; :dnf-copr backend registered via register-repository-backend):
 (define-catalog :repositories
   (:wezterm (:fedora (:method :dnf-copr :id "@wez/wezterm"))))
 ```
@@ -1679,7 +1685,7 @@ make the package depend on it, so the repository is configured before the
 install runs. This is how a plugin turns `(package :wezterm)` into a
 repository-plus-package pair without any extra thought from you (see
 §5.21 for the `repository` action itself, and §4.6 for
-`register-repository-method`). Packages with no spec entry, or with a
+`register-repository-backend`). Packages with no spec entry, or with a
 plain string mapping, behave exactly as before — no repository is
 injected.
 
@@ -1877,13 +1883,19 @@ directory. They have their own convenience forms too (`user`, `group`,
 variations.
 
 **`:service`, specifically** — enables/starts a systemd unit only if it
-isn't already in the desired state:
+isn't already in the desired state. It dispatches through the core
+`:systemd` service backend (system scope, escalates via sudo); pass
+`:scope :user` to manage a user-scope unit through the `:systemd-user`
+backend instead:
 
 ```lisp
 (:action :service :target :tlp :enabled t :running t)
+(:action :service :target :syncthing :scope :user :enabled t :running t)
 ```
 
-**`:timer`, specifically** — creates and enables a systemd timer unit:
+**`:timer`, specifically** — creates and enables a systemd timer unit.
+Timers live under `~/.config/systemd/user` and are managed through the
+`:systemd-user` service backend, which never needs sudo:
 
 ```lisp
 (:action :timer :target "backup-daily" :on-calendar "daily")
@@ -2145,8 +2157,8 @@ other filesystem-removing built-in.
 
 **`repository`** — ensures a distribution software repository (a Fedora
 COPR, an Ubuntu PPA, an apt line, ...) is configured, dispatching on the
-action's `:method` through methods registered by
-`register-repository-method` (see §4.6). The executor itself is
+action's `:method` through repository backends registered by
+`register-repository-backend` (see §4.6). The executor itself is
 distro-agnostic — all knowledge of how a *given* distro adds a repository
 lives in distro plugins:
 
@@ -2157,7 +2169,7 @@ lives in distro plugins:
 You rarely write these by hand: a distro plugin's `:repositories` catalog
 entry makes me insert the `:repository` action automatically, ahead of
 any `:system` package that needs it (see §5.16) — so `(package :wezterm)`
-*can* just work. If no method is registered for the `:method` you used
+*can* just work. If no backend is registered for the `:method` you used
 (the distro plugin that provides it isn't loaded), I signal an
 `execution-failure` in every mode — `linacs check` surfaces that before
 `apply` would ever hit a half-configured system.

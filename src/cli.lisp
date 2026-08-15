@@ -808,6 +808,25 @@ for facts-str = (let ((prov (action-provenance id)))
         (format t "  (none registered)~%")))
   (terpri)
 
+  (format t "Service backends:~%")
+  (let ((rows (loop for k being the hash-key of *service-backends* using (hash-value b)
+                     collect (list (string-downcase (string k))
+                                   (string-downcase (string (service-backend-scope b)))
+                                   (if (service-backend-privileged-p b) "yes" "")
+                                   (or (service-backend-description b) "")))))
+    (if rows
+        (print-table '("NAME" "SCOPE" "SUDO" "DESCRIPTION") (sort rows #'string< :key #'first))
+        (format t "  (none registered)~%")))
+  (terpri)
+
+  (format t "Repository backends:~%")
+  (let ((rows (loop for k being the hash-key of *repository-backends* using (hash-value b)
+                     collect (list (string-downcase (string k)) (or (repository-backend-description b) "")))))
+    (if rows
+        (print-table '("METHOD" "DESCRIPTION") (sort rows #'string< :key #'first))
+        (format t "  (none registered)~%")))
+  (terpri)
+
   (format t "DSL forms:~%")
   (let ((rows (loop for name being the hash-key of *dsl-forms* using (hash-value entry)
                     collect (list (string-downcase name) (getf entry :source)))))

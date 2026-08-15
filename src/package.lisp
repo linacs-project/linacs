@@ -217,9 +217,20 @@
    #:backend-privileged-p #:backend-description
    #:backend-installed-p #:backend-install #:backend-uninstall
    #:backend-needs-privilege-p
-   #:register-repository-method
-   #:find-repository-method
-   #:*repository-methods*
+   #:service-backend #:make-service-backend #:*service-backends*
+   #:register-service-backend #:find-service-backend
+   #:service-backend-name #:service-backend-scope
+   #:service-backend-privileged-p #:service-backend-description
+   #:service-enabled-p-fn #:service-active-p-fn
+   #:service-enable-fn #:service-start-fn #:service-disable-fn
+   #:service-enabled-p #:service-active-p
+   #:service-enable #:service-start #:service-disable
+   #:repository-backend #:make-repository-backend #:*repository-backends*
+   #:register-repository-backend #:find-repository-backend
+   #:repository-backend-method #:repository-backend-description
+   #:repository-backend-present-p-fn #:repository-backend-ensure-fn
+   #:repository-backend-remove-fn
+   #:repository-present-p #:repository-ensure #:repository-remove
    #:resolve-repository-prerequisites
    #:*provenance*
    #:register-provenance
@@ -354,8 +365,21 @@
     #:backend-via #:backend-executor #:backend-privileged-p #:backend-description
     #:backend-installed-p #:backend-install #:backend-uninstall
     #:backend-needs-privilege-p
+    #:service-backend #:make-service-backend #:*service-backends*
+    #:register-service-backend #:find-service-backend
+    #:service-backend-name #:service-backend-scope
+    #:service-backend-privileged-p #:service-backend-description
+    #:service-enabled-p-fn #:service-active-p-fn
+    #:service-enable-fn #:service-start-fn #:service-disable-fn
+    #:service-enabled-p #:service-active-p
+    #:service-enable #:service-start #:service-disable
+    #:repository-backend #:make-repository-backend #:*repository-backends*
+    #:register-repository-backend #:find-repository-backend
+    #:repository-backend-method #:repository-backend-description
+    #:repository-backend-present-p-fn #:repository-backend-ensure-fn
+    #:repository-backend-remove-fn
+    #:repository-present-p #:repository-ensure #:repository-remove
     #:register-pipeline-hook
-    #:register-repository-method
     #:register-sudo-requiring-action-type #:register-non-privileged-package-via
     ;; provider object (REFACTOR.org Thought 9 / Action 9)
     #:provider #:make-provider #:provide-actions
@@ -445,8 +469,21 @@
     #:backend-via #:backend-executor #:backend-privileged-p #:backend-description
     #:backend-installed-p #:backend-install #:backend-uninstall
     #:backend-needs-privilege-p
+    #:service-backend #:make-service-backend #:*service-backends*
+    #:register-service-backend #:find-service-backend
+    #:service-backend-name #:service-backend-scope
+    #:service-backend-privileged-p #:service-backend-description
+    #:service-enabled-p-fn #:service-active-p-fn
+    #:service-enable-fn #:service-start-fn #:service-disable-fn
+    #:service-enabled-p #:service-active-p
+    #:service-enable #:service-start #:service-disable
+    #:repository-backend #:make-repository-backend #:*repository-backends*
+    #:register-repository-backend #:find-repository-backend
+    #:repository-backend-method #:repository-backend-description
+    #:repository-backend-present-p-fn #:repository-backend-ensure-fn
+    #:repository-backend-remove-fn
+    #:repository-present-p #:repository-ensure #:repository-remove
     #:register-pipeline-hook
-    #:register-repository-method
     #:register-sudo-requiring-action-type #:register-non-privileged-package-via
     ;; provider object (REFACTOR.org Thought 9 / Action 9)
     #:provider #:make-provider #:provide-actions
