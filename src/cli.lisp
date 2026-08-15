@@ -85,8 +85,9 @@ reset (to drop hooks registered outside the discovery flow), not a
 workaround for accumulation. DEFINE-FEATURE/REGISTER-PROVIDER/
 DEFINE-CATALOG overwrite cleanly by name. A fresh per-invocation process
 never notices any of this; a persistent one does."
-  (clrhash *fact-probers*)
-  (clrhash *fact-metadata*)
+  (clrhash *fact-sources*)
+  (clrhash *fact-objects*)
+  (setf *facts* nil)
   (clrhash *feature-registry*)
   (clrhash *providers*)
   (clrhash *catalogs*)
@@ -98,7 +99,7 @@ never notices any of this; a persistent one does."
 (defun bootstrap (opts)
   "Run Discovery (step 0) against OPTS's project root."
   (reset-project-registries)
-  (default-fact-probers)
+  (default-fact-sources)
   (default-dsl-forms)
   (discover-plugins)
   (discover-project-plugins (cli-opts-root opts))
@@ -799,6 +800,14 @@ for facts-str = (let ((prov (action-provenance id)))
     (print-table '("TYPE" "DESCRIPTION") (sort rows #'string< :key #'first)))
   (terpri)
 
+  (format t "Package backends:~%")
+  (let ((rows (loop for k being the hash-key of *package-backends* using (hash-value b)
+                     collect (list (string-downcase (string k)) (or (backend-description b) "")))))
+    (if rows
+        (print-table '("VIA" "DESCRIPTION") (sort rows #'string< :key #'first))
+        (format t "  (none registered)~%")))
+  (terpri)
+
   (format t "DSL forms:~%")
   (let ((rows (loop for name being the hash-key of *dsl-forms* using (hash-value entry)
                     collect (list (string-downcase name) (getf entry :source)))))
@@ -808,18 +817,20 @@ for facts-str = (let ((prov (action-provenance id)))
   (terpri)
 
   (format t "Facts:~%")
-  (let ((rows (loop for k being the hash-key of *fact-metadata* using (hash-value meta)
+  (let ((rows (loop for k being the hash-key of *fact-sources* using (hash-value source)
                     collect (list (string-downcase (string k))
-                                  (princ-to-string (or (getf meta :type) ""))
-                                  (or (getf meta :doc) "")))))
+                                  (princ-to-string (or (fact-source-type source) ""))
+                                  (or (fact-source-doc source) "")
+                                  (or (fact-source-registrant source) "")))))
     (if rows
-        (print-table '("FACT" "TYPE" "DESCRIPTION") (sort rows #'string< :key #'first))
+        (print-table '("FACT" "TYPE" "DESCRIPTION" "SOURCE") (sort rows #'string< :key #'first))
         (format t "  (none registered)~%"))))
 
 (defun cmd-facts (opts)
   "Print every resolved fact -- after probing and merging the selected
---profile -- one per line, aligned. Useful for answering \"why did LINACS pick
-that provider on this machine\" without re-deriving it from probes."
+--profile -- one per line, aligned, with its source and confidence. Useful
+for answering \"why did LINACS pick that provider on this machine\" without
+re-deriving it from probes."
   (bootstrap opts)
   (probe-all-facts)
   (apply-profile (cli-opts-profile opts))
@@ -829,21 +840,45 @@ that provider on this machine\" without re-deriving it from probes."
          (key-width (reduce #'max (mapcar (lambda (p) (length (string (car p)))) sorted) :initial-value 0))
          (val-width (reduce #'max (mapcar (lambda (p) (length (princ-to-string (cdr p)))) sorted) :initial-value 0))
          (type-width (reduce #'max (mapcar (lambda (p)
-                                             (let ((meta (gethash (car p) *fact-metadata*)))
-                                               (length (princ-to-string (or (getf meta :type) "")))))
-                                           sorted)
-                             :initial-value 0)))
-    (format t "~va  ~va  ~a~%" key-width "FACT" val-width "VALUE" "TYPE")
-    (format t "~va  ~va  ~a~%"
+                                              (let ((source (gethash (car p) *fact-sources*)))
+                                                (length (princ-to-string (or (and source (fact-source-type source)) "")))))
+                                            sorted)
+                              :initial-value 0))
+         (confidence-width (length "CONFIDENCE")))
+    (format t "~va  ~va  ~va  ~va  ~a~%"
+            key-width "FACT" val-width "VALUE" type-width "TYPE" confidence-width "CONFIDENCE" "SOURCE")
+    (format t "~va  ~va  ~va  ~va  ~a~%"
             key-width (make-string key-width :initial-element #\-)
             val-width (make-string val-width :initial-element #\-)
-            (make-string type-width :initial-element #\-))
+            type-width (make-string type-width :initial-element #\-)
+            confidence-width (make-string confidence-width :initial-element #\-)
+            (make-string (reduce #'max (mapcar (lambda (p)
+                                                 (length (princ-to-string
+                                                          (fact-source-display-name
+                                                           (gethash (car p) *fact-objects*)))))
+                                               sorted)
+                                :initial-value 0)
+                         :initial-element #\-))
     (dolist (p sorted)
       (let* ((key (car p))
-             (meta (gethash key *fact-metadata*))
+             (source (gethash key *fact-sources*))
+             (obj (gethash key *fact-objects*))
              (val-str (princ-to-string (cdr p)))
-             (type-str (princ-to-string (or (getf meta :type) ""))))
-        (format t "~va  ~va  ~a~%" key-width (string key) val-width val-str type-str)))))
+             (type-str (princ-to-string (or (and source (fact-source-type source)) "")))
+             (confidence-str (princ-to-string (if obj (fact-confidence obj) :unknown)))
+             (source-str (princ-to-string (fact-source-display-name obj))))
+        (format t "~va  ~va  ~va  ~va  ~a~%"
+                key-width (string key) val-width val-str type-width type-str
+                confidence-width confidence-str source-str)))))
+
+(defun fact-source-display-name (fact)
+  "A short human-readable source label for FACT's provenance: the
+registrant for a probed fact, the profile name for a profile override, or
+the :platform keyword for a --platform override."
+  (let ((source (fact-source-of fact)))
+    (cond ((null fact) "")
+          ((typep source 'fact-source) (or (fact-source-registrant source) "declared"))
+          (t source))))
 
 (defun feature-resolution-summary (r &optional overrides)
   "How feature request R will actually resolve: the chosen provider name,
@@ -882,17 +917,15 @@ precedence over the request's own :via."
                  (format nil "found ~a" (fact :package-manager)))
       (log-check "Privileged (can install packages)" (privileged-p) "will use sudo per-action")
       (let ((type-mismatches 0))
-        (maphash (lambda (key entry)
-                   (declare (ignore entry))
+        (maphash (lambda (key source)
                    (let* ((value (getf *facts* key))
-                          (meta (gethash key *fact-metadata*))
-                          (type (and meta (getf meta :type))))
+                          (type (fact-source-type source)))
                      (when (and type value (not (eq value :unknown))
                                 (not (typep value type)))
                        (incf type-mismatches)
                        (log-check (format nil "Fact ~a type" key) nil
                                   (format nil "expected ~s, got ~s" type value)))))
-                 *fact-probers*)
+                 *fact-sources*)
         (log-check "Fact type validation" (zerop type-mismatches)
                    (format nil "~d type mismatch(es)" type-mismatches)))
       (let ((home (run-current-home-thunk)))

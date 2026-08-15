@@ -12,7 +12,7 @@
 ;;;;
 ;;;;   Registering a new one, typically from a project's providers/ file:
 ;;;;
-;;;;     (register-fact-prober :gpu (lambda () (if (probe-file "...") :nvidia :unknown)))
+;;;;     (register-fact-source :gpu (lambda () (if (probe-file "...") :nvidia :unknown)))
 ;;;;
 ;;;; Every built-in prober below reads /proc or /sys directly (or shells
 ;;;; out to a read-only command like `uname`) -- never requires root, and
@@ -35,130 +35,134 @@
 
 (in-package :linacs.core)
 
-(defvar *fact-probers* (make-hash-table :test 'eq)
-  "Maps fact key -> (prober-function . registrant-name).")
+(defvar *fact-sources* (make-hash-table :test 'eq)
+  "Maps fact key -> FACT-SOURCE object (probe function, registrant, type,
+doc). Populated by REGISTER-FACT-SOURCE and DECLARE-FACT-SOURCE.")
+
+(defvar *fact-objects* (make-hash-table :test 'eq)
+  "Maps fact key -> FACT object for the current run. Populated by
+PROBE-ALL-FACTS (confidence :PROBED), APPLY-PROFILE (:PROFILE) and
+APPLY-PLATFORM-OVERRIDE (:PLATFORM). Used for provenance reporting; the
+value plist *FACTS* is derived from it.")
 
 (defvar *facts* nil
-  "Plist of resolved facts, populated by PROBE-ALL-FACTS and merged with
-a profile's overrides. Read via FACT.")
+  "Plist of resolved fact values, populated by PROBE-ALL-FACTS and merged
+with a profile's overrides. Read via FACT. This stays a plist of plain
+values because it is the wire format providers and templates receive --
+a provider's `(getf facts :key)` must keep returning a value.")
 
 (defvar *facts-read* (make-hash-table :test 'eq)
   "Set of fact keys read during the current provider invocation. Populated
 by FACT* and reset before each provider call. Used for provenance tracking
 so the :facts-snapshot only includes facts the provider actually consulted.")
 
-(defvar *fact-metadata* (make-hash-table :test 'eq)
-  "Maps fact key -> plist with :type (CL type specifier) and :doc (string).
-Populated by REGISTER-FACT-PROBER when :type and/or :doc are supplied.")
-
-(defun register-fact-prober (key prober-fn &optional (registrant (package-name *package*))
+(defun register-fact-source (key prober-fn &optional (registrant (package-name *package*))
                              &key type doc)
-  "Register a fact prober for KEY. If a different registrant already
-registered a prober for the same KEY, signal FACT-PROBER-CONFLICT and abort
+  "Register a fact source for KEY -- a probe function plus its registrant
+and optional :TYPE/:DOC metadata. If a different registrant already
+registered a source for the same KEY, signal FACT-PROBER-CONFLICT and abort
 startup -- there is no implicit first-one-wins resolution.
 
 Optional keyword arguments:
   :TYPE -- a CL type specifier checked at probe time (via TYPEP) for
            informative warnings when the prober returns an unexpected value.
   :DOC  -- a human-readable description shown by `linacs list`."
-  (let ((existing (gethash key *fact-probers*)))
-    (when (and existing (not (string= (cdr existing) registrant)))
+  (let ((existing (gethash key *fact-sources*)))
+    (when (and existing (not (string= (fact-source-registrant existing) registrant)))
       (error 'fact-prober-conflict
              :fact-key key
-             :registrants (list (cdr existing) registrant)))
-    (setf (gethash key *fact-probers*) (cons prober-fn registrant)))
-  (when (or type doc)
-    (setf (gethash key *fact-metadata*)
-          (append (when type (list :type type))
-                  (when doc (list :doc doc)))))
+             :registrants (list (fact-source-registrant existing) registrant)))
+    (setf (gethash key *fact-sources*)
+          (make-fact-source :name key :probe-fn prober-fn
+                            :registrant registrant :type type :doc doc)))
   key)
 
-(defun declare-fact (key &key type doc)
+(defun declare-fact-source (key &key type doc)
   "Document a fact key that has no prober -- e.g. a profile-only fact like
-:work-p or :languages -- without registering one. Populates *FACT-METADATA*
-so `linacs list` shows the fact and APPLY-PROFILE does not warn on it as a
-possible typo. Same metadata keywords as REGISTER-FACT-PROBER: :TYPE (a CL
-type specifier) and :DOC (a human-readable description)."
-  (setf (gethash key *fact-metadata*)
-        (append (when type (list :type type))
-                (when doc (list :doc doc))))
+:work-p or :languages -- without registering one. Registers a FACT-SOURCE
+with no probe function, so `linacs list` shows the fact and APPLY-PROFILE
+does not warn on it as a possible typo. Same metadata keywords as
+REGISTER-FACT-SOURCE: :TYPE (a CL type specifier) and :DOC (a
+human-readable description)."
+  (setf (gethash key *fact-sources*)
+        (make-fact-source :name key :registrant nil :type type :doc doc))
   key)
 
-(defun default-fact-probers ()
+(defun default-fact-sources ()
   "Register the built-in facts LINACS always probes, with type metadata."
-  (register-fact-prober :os #'probe-os "linacs-core"
+  (register-fact-source :os #'probe-os "linacs-core"
     :type '(member :fedora :arch :debian :ubuntu :unknown)
     :doc "Linux distribution identifier")
-  (register-fact-prober :hostname (lambda () (or (uiop:hostname) "unknown")) "linacs-core"
+  (register-fact-source :hostname (lambda () (or (uiop:hostname) "unknown")) "linacs-core"
     :type '(or string (member :unknown))
     :doc "System hostname")
-  (register-fact-prober :laptop-p #'probe-laptop-p "linacs-core"
+  (register-fact-source :laptop-p #'probe-laptop-p "linacs-core"
     :type '(member t nil)
     :doc "T if any battery is present")
-  (register-fact-prober :display-server #'probe-display-server "linacs-core"
+  (register-fact-source :display-server #'probe-display-server "linacs-core"
     :type '(or (member :wayland :x11) null)
     :doc "Active display server; nil in headless/SSH environments")
-  (register-fact-prober :gpu-vendor #'probe-gpu-vendor "linacs-core"
+  (register-fact-source :gpu-vendor #'probe-gpu-vendor "linacs-core"
     :type 'list
     :doc "List of keyword GPU vendor identifiers found via DRM")
-  (register-fact-prober :vm-p #'probe-vm-p "linacs-core"
+  (register-fact-source :vm-p #'probe-vm-p "linacs-core"
     :type '(member t nil)
     :doc "T if running inside a VM or hypervisor")
-  (register-fact-prober :cpu-arch #'probe-cpu-arch "linacs-core"
+  (register-fact-source :cpu-arch #'probe-cpu-arch "linacs-core"
     :type 'keyword
     :doc "CPU architecture from uname -m (e.g. :x86-64, :aarch64)")
-  (register-fact-prober :package-manager #'probe-package-manager "linacs-core"
+  (register-fact-source :package-manager #'probe-package-manager "linacs-core"
     :type '(member :pacman :dnf :yum :apt :zypper :apk :xbps :portage :unknown)
     :doc "Installed system package manager binary")
-  (register-fact-prober :wifi-p #'probe-wifi-p "linacs-core"
+  (register-fact-source :wifi-p #'probe-wifi-p "linacs-core"
     :type '(member t nil)
     :doc "T if a wireless network interface is present")
-  (register-fact-prober :bluetooth-p #'probe-bluetooth-p "linacs-core"
+  (register-fact-source :bluetooth-p #'probe-bluetooth-p "linacs-core"
     :type '(member t nil)
     :doc "T if a Bluetooth adapter is present")
-  (register-fact-prober :touchpad-p #'probe-touchpad-p "linacs-core"
+  (register-fact-source :touchpad-p #'probe-touchpad-p "linacs-core"
     :type '(member t nil)
     :doc "T if a touchpad input device is present")
-  (register-fact-prober :ram-gb #'probe-ram-gb "linacs-core"
+  (register-fact-source :ram-gb #'probe-ram-gb "linacs-core"
     :type '(or integer (member :unknown))
     :doc "Total system RAM in gigabytes")
-  (register-fact-prober :cpu-cores #'probe-cpu-cores "linacs-core"
+  (register-fact-source :cpu-cores #'probe-cpu-cores "linacs-core"
     :type '(or integer (member :unknown))
     :doc "Number of logical CPU threads")
-  (register-fact-prober :uefi-p #'probe-uefi-p "linacs-core"
+  (register-fact-source :uefi-p #'probe-uefi-p "linacs-core"
     :type '(member t nil)
     :doc "T if booted in UEFI mode (/sys/firmware/efi exists)")
-  (register-fact-prober :init-system #'probe-init-system "linacs-core"
+  (register-fact-source :init-system #'probe-init-system "linacs-core"
     :type '(member :systemd :openrc :runit :sysvinit :unknown)
     :doc "Init system managing PID 1")
-  (register-fact-prober :root-disk-type #'probe-root-disk-type "linacs-core"
+  (register-fact-source :root-disk-type #'probe-root-disk-type "linacs-core"
     :type '(member :nvme :ssd :hdd :unknown)
     :doc "Root filesystem backing disk type")
-  (register-fact-prober :fingerprint-p #'probe-fingerprint-p "linacs-core"
+  (register-fact-source :fingerprint-p #'probe-fingerprint-p "linacs-core"
     :type '(member t nil)
     :doc "T if a USB fingerprint reader is present")
-  (register-fact-prober :container-p #'probe-container-p "linacs-core"
+  (register-fact-source :container-p #'probe-container-p "linacs-core"
     :type '(member t nil)
     :doc "T if running inside a container")
-  (register-fact-prober :toolbox-p #'probe-toolbox-p "linacs-core"
+  (register-fact-source :toolbox-p #'probe-toolbox-p "linacs-core"
     :type '(member t nil)
     :doc "T if toolbox or podman binary is on PATH (containerised CLI tools)")
-  (register-fact-prober :in-toolbox-p #'probe-in-toolbox-p "linacs-core"
+  (register-fact-source :in-toolbox-p #'probe-in-toolbox-p "linacs-core"
     :type '(member t nil)
     :doc "T if running inside a toolbox container ($TOOLBOX_PATH is set)")
-  (register-fact-prober :flatpak-p #'probe-flatpak-p "linacs-core"
+  (register-fact-source :flatpak-p #'probe-flatpak-p "linacs-core"
     :type '(member t nil)
     :doc "T if flatpak binary is on PATH")
-  (register-fact-prober :podman-p #'probe-podman-p "linacs-core"
+  (register-fact-source :podman-p #'probe-podman-p "linacs-core"
     :type '(member t nil)
     :doc "T if podman binary is on PATH (rootless containers)")
-  (register-fact-prober :appimage-p #'probe-appimage-p "linacs-core"
+  (register-fact-source :appimage-p #'probe-appimage-p "linacs-core"
     :type '(member t nil)
     :doc "T if FUSE is available (AppImages can execute)")
-  (register-fact-prober :sys-vendor #'probe-sys-vendor "linacs-core"
+  (register-fact-source :sys-vendor #'probe-sys-vendor "linacs-core"
     :type '(or string (member :unknown))
     :doc "System vendor string from DMI")
-  (register-fact-prober :product-name #'probe-product-name "linacs-core"
+  (register-fact-source :product-name #'probe-product-name "linacs-core"
     :type '(or string (member :unknown))
     :doc "Product name string from DMI"))
 
@@ -487,20 +491,43 @@ bus with a less descriptive name)."
 ;;; --------------------------------------------------------------------------
 
 (defun probe-all-facts ()
-  "Run every registered fact prober once and populate *FACTS*.
-Validates each probed value against its declared :type in *FACT-METADATA*
-(if one exists), logging a warning on mismatch via `linacs.log:warn*`."
+  "Run every registered fact source probe once and populate *FACT-OBJECTS*
+with FACT instances (confidence :PROBED), then derive the *FACTS* value
+plist from them. Validates each probed value against its declared :type (if
+one exists), logging a warning on mismatch via `linacs.log:warn*`."
+  (clrhash *fact-objects*)
+  (maphash (lambda (key source)
+             (when (fact-source-probe-fn source)
+               (let ((value (funcall (fact-source-probe-fn source))))
+                 (when (and (fact-source-type source)
+                            (not (typep value (fact-source-type source))))
+                   (linacs.log:warn* "Fact ~s returned ~s (type ~s), which does not match declared type ~s"
+                                     key value (type-of value) (fact-source-type source)))
+                 (setf (gethash key *fact-objects*)
+                       (make-fact :name key :value value
+                                  :confidence :probed :source source)))))
+           *fact-sources*)
+  (refresh-facts-plist)
+  *facts*)
+
+(defun refresh-facts-plist ()
+  "Rebuild *FACTS* -- the value plist -- from *FACT-OBJECTS*. Called after
+every mutation of the fact store so the provider/template wire format stays
+in sync with the FACT objects."
   (let ((result '()))
-    (maphash (lambda (key entry)
-               (let ((value (funcall (car entry))))
-                 (let ((meta (gethash key *fact-metadata*)))
-                   (when (and meta (getf meta :type))
-                     (unless (typep value (getf meta :type))
-                       (linacs.log:warn* "Fact ~s returned ~s (type ~s), which does not match declared type ~s"
-                                         key value (type-of value) (getf meta :type)))))
-                 (setf result (list* key value result))))
-             *fact-probers*)
+    (maphash (lambda (key fact)
+               (setf result (list* key (fact-value fact) result)))
+             *fact-objects*)
     (setf *facts* result)))
+
+(defun set-fact (key value &key (confidence :probed) source)
+  "Record KEY => VALUE as a FACT in *FACT-OBJECTS* with CONFIDENCE and
+SOURCE, then refresh the *FACTS* value plist. Shared by the probe, profile
+and platform-override paths."
+  (setf (gethash key *fact-objects*)
+        (make-fact :name key :value value :confidence confidence :source source))
+  (refresh-facts-plist)
+  value)
 
 (defun apply-platform-override (platform)
   "Override the :os fact from the CLI's --platform NAME flag. Applied after
@@ -509,7 +536,8 @@ platform wins over both the auto-probe and any profile override. NAME is a
 raw string (e.g. \"fedora\", \"arch\", \"ubuntu\"), interned to a keyword;
 returns *FACTS*. A NIL PLATFORM is a no-op."
   (when platform
-    (setf (getf *facts* :os) (intern (string-upcase platform) :keyword)))
+    (set-fact :os (intern (string-upcase platform) :keyword)
+              :confidence :platform :source :platform))
   *facts*)
 
 (defun fact (key)

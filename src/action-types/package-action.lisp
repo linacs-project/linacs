@@ -307,42 +307,23 @@ expected to be provided by an external plugin."
        (when installed (run-privileged (uninstall-command :system name)))
        (report :removed :target name)))))
 
-;;; --- Via-handler registry ------------------------------------------------
-;;;
-;;; Plugins register custom dispatch logic for new :via values (e.g.
-;;; :toolbox, :rpm-ostree) without modifying core.  A handler receives
-;;; (ACTION NAME &KEY MODE) where NAME is already resolved to a string.
-
-(defvar *package-via-handlers* (make-hash-table :test 'eq)
-  "Maps via keyword → handler function.  Handler: (action name &key mode)")
-
-(defun register-package-via-handler (via handler)
-  "Register HANDLER for :via VIA."
-  (setf (gethash via *package-via-handlers*) handler))
-
-(defun find-package-via-handler (via)
-  "Look up a handler for :via VIA.  Returns the handler or NIL."
-  (gethash via *package-via-handlers*))
-
-;; --- Handler registrations -----------------------------------------------
-
-(register-package-via-handler :flatpak  #'execute-flatpak-package)
-(register-package-via-handler :toolbox  #'execute-toolbox-package)
-(register-package-via-handler :podman   #'execute-toolbox-package)
-(register-package-via-handler :appimage #'execute-appimage-package)
-(register-package-via-handler :pip      #'execute-pip-package)
-(register-package-via-handler :npm      #'execute-npm-package)
-(register-package-via-handler :system   #'execute-system-package)
-
 ;;; --- Dispatch ------------------------------------------------------------
+;;;
+;;; :package :via dispatch goes through the package-backend protocol
+;;; (src/backends/packages/). Built-in backends for :system / :pip / :npm /
+;;; :flatpak / :toolbox / :podman / :appimage are registered in
+;;; src/backends/packages/backends.lisp, each wrapping the executor functions
+;;; above; plugins register custom :via ecosystems (e.g. :toolbox, :rpm-ostree)
+;;; the same way with REGISTER-PACKAGE-BACKEND. Unknown :via values fall back
+;;; to the :system backend.
 
 (defun execute-package (action &key mode)
   (let* ((via (or (getf action :via)
                   (resolve-package-via action)))
          (name (resolved-package-name action via))
-         (handler (or (find-package-via-handler via)
-                      (find-package-via-handler :system))))
-    (funcall handler action name :mode mode)))
+         (backend (or (find-package-backend via)
+                      (find-package-backend :system))))
+    (execute-package-backend backend action name :mode mode)))
 
 (register-action-type :package #'execute-package
   :description "Install a package via the system package manager, pip, npm, Flatpak, toolbox, podman, or AppImage"

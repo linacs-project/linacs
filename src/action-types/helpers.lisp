@@ -317,13 +317,20 @@ property. Idempotent: registering the same pattern twice has no effect."
 
 (defun action-needs-privilege-p (action)
   "T if ACTION is expected to need privilege escalation (sudo).
-Covers :package actions (minus non-privileged vias like :flatpak :user)
-and any action type whose executor unconditionally calls RUN-PRIVILEGED."
+Covers :package actions (minus non-privileged vias -- whether declared by the
+package backend's privileged-p, e.g. flatpak :scope :user or appimage, or by
+a registered non-privileged pattern in *NON-PRIVILEGED-PACKAGE-VIAS*) and any
+action type whose executor unconditionally calls RUN-PRIVILEGED."
   (flet ((matches-non-privileged-p (pattern)
            (loop for (prop val) on pattern by #'cddr
                  always (equal (getf action prop) val))))
     (if (eq (action-type action) :package)
-        (not (some #'matches-non-privileged-p *non-privileged-package-vias*))
+        (let* ((via (getf action :via))
+               (backend (and via (find-package-backend via)))
+               (backend-non-privileged
+                 (and backend (not (backend-needs-privilege-p backend action)))))
+          (not (or (some #'matches-non-privileged-p *non-privileged-package-vias*)
+                   backend-non-privileged)))
         (member (action-type action) *sudo-requiring-action-types*))))
 
 (defun preflight-sudo-prompt (ordered-actions)

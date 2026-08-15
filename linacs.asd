@@ -25,11 +25,16 @@
     ((:module "src"
               :serial t
               :components
-              ((:file "package")
-               (:file "conditions")
-               (:file "log")
-               (:file "discovery")
-               (:file "facts")
+               ((:file "package")
+                (:file "conditions")
+                (:file "log")
+                (:module "fact-model"
+                         :pathname "domain"
+                         :serial t
+                         :components
+                         ((:file "fact")))
+                (:file "discovery")
+                (:file "facts")
                (:file "profiles")
                (:file "catalogs")
                (:file "features")
@@ -40,12 +45,20 @@
                         ((:file "provider")))
                (:file "providers")
                (:module "backends"
-                        :pathname "backends/filesystem"
-                        :serial t
-                        :components
-                        ((:file "filesystem")
-                         (:file "memory")
-                         (:file "recording")))
+                         :pathname "backends/filesystem"
+                         :serial t
+                         :components
+                         ((:file "filesystem")
+                          (:file "memory")
+                          (:file "recording")))
+               ;; The package-backend protocol loads here, before action-types,
+               ;; so helpers.lisp and package-action.lisp can reference
+               ;; FIND-PACKAGE-BACKEND / EXECUTE-PACKAGE-BACKEND.
+               (:module "package-backend"
+                         :pathname "backends/packages"
+                         :serial t
+                         :components
+                         ((:file "package-backend")))
                (:module "execution"
                         :pathname "domain/execution"
                         :serial t
@@ -104,10 +117,18 @@
                ;; The real filesystem backend loads after action-types/helpers
                ;; so its methods can use the escalate-on-demand helpers.
                (:module "backends-real"
-                        :pathname "backends/filesystem"
-                        :serial t
-                        :components
-                        ((:file "real")))
+                         :pathname "backends/filesystem"
+                         :serial t
+                         :components
+                         ((:file "real")))
+               ;; The built-in package backend registrations wrap the
+               ;; execute-*-package functions from action-types/package-action.lisp,
+               ;; so they load after the action-types module.
+               (:module "package-backends"
+                         :pathname "backends/packages"
+                         :serial t
+                         :components
+                         ((:file "backends")))
                (:file "pipeline")
                (:file "privilege")
                (:file "dsl")

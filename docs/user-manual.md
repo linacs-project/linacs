@@ -281,7 +281,7 @@ linacs plan -C ~/my-home --profile personal  # -> bash
 ```
 
 Same `home.lisp`, different outcome, purely from the Fact. `:work-p` is a
-fact only your profile sets, so declare it once with `declare-fact` and
+fact only your profile sets, so declare it once with `declare-fact-source` and
 I'll stop warning "possible typo?" on every run — see §5.14.
 
 #### 2.6 Step 6 — check before you trust
@@ -822,8 +822,8 @@ lives in a plain hash table, held in a special variable:
 | `*feature-registry*` | `define-feature` | Yes |
 | `*providers*` | `define-provider` | Yes |
 | `*catalogs*` | `define-catalog` / `register-catalog` | Yes |
-| `*fact-probers*` | `register-fact-prober` | Yes |
-| `*fact-metadata*` | `register-fact-prober` / `declare-fact` | Yes |
+| `*fact-sources*` | `register-fact-source` / `declare-fact-source` | Yes |
+| `*fact-objects*` | `probe-all-facts` / `apply-profile` / `apply-platform-override` | Yes |
 | `*pipeline-hooks*` | `register-pipeline-hook` | Yes |
 | `*profiles*` | `define-profile` | Yes |
 | `*dsl-forms*` | `register-dsl-form` / core built-ins | Yes |
@@ -908,10 +908,10 @@ map of what's extensible and where it's registered:
 | A capability | `define-feature` / `register-feature` | a project's `features/*.lisp` |
 | An implementation of a capability | `define-provider` / `register-provider` | a project's `providers/*.lisp` |
 | A distro package-name mapping | `register-catalog` | a project's `catalogs/*.lisp` |
-| A new probed fact | `register-fact-prober` | a project's `providers/*.lisp` |
-| Document a profile-only fact (no prober) | `declare-fact` | a project's `profiles/*.lisp` |
+| A new probed fact | `register-fact-source` | a project's `providers/*.lisp` |
+| Document a profile-only fact (no prober) | `declare-fact-source` | a project's `profiles/*.lisp` |
 | Cross-cutting behavior (audit logging, a confirmation prompt) | `register-pipeline-hook` | a project's `hooks/*.lisp` |
-| A new `:via` handler for the `:package` action type | `register-package-via-handler` | a plugin, or a project's `providers/*.lisp` |
+| A new `:via` backend for the `:package` action type | `register-package-backend` | a plugin, or a project's `providers/*.lisp` |
 | A distro repository method (e.g. `:dnf-copr`, `:apt-ppa`) | `register-repository-method` | a distro plugin's `distributions/*` |
 | A template renderer | a `RENDER-*` function | a project's `templates/*.lisp` |
 | **A genuinely new action type** (rare — `:command` covers most cases) | `register-action-type` | a plugin, or a change to `src/action-types/` if it belongs in the core |
@@ -933,13 +933,15 @@ A new action type is a function of `(action &key mode)` handling
 `:apply`/`:check`/`:remove`, plus one `register-action-type` call with a
 `:description`. If the action's identity is more than `(type . target)`,
 pass an `:identity` function so deduplication and conflict detection use
-it (see §3.5). A new `:via` handler for `:package` is a function of
-`(action name &key mode)` where `name` is already resolved to a string,
-plus one `register-package-via-handler` call — for example, the
-`linacs-fedora` plugin registers an `:rpm-ostree` handler so
+it (see §3.5). A new `:via` backend for `:package` is a `package-backend`
+object wrapping a function of `(action name &key mode)` where `name` is
+already resolved to a string — construct it with `make-package-backend`
+and register it with `register-package-backend`. For example, the
+`linacs-fedora` plugin registers an `:rpm-ostree` backend so
 `(package :docker :via :rpm-ostree)` works transparently. Built-in
-handlers (`:flatpak`, `:toolbox`, `:podman`, `:appimage`, `:pip`, `:npm`,
-`:system`) live in `src/action-types/package-action.lisp` and are
+backends (`:flatpak`, `:toolbox`, `:podman`, `:appimage`, `:pip`, `:npm`,
+`:system`) live in `src/backends/packages/backends.lisp`, each wrapping
+its executor from `src/action-types/package-action.lisp`, and are
 registered at load time. Look at any file in `src/action-types/` as a
 template for a full action type; `command.lisp` is the simplest complete
 example.
@@ -1268,7 +1270,7 @@ A plan containing only `:scope :user` Flatpak installs never triggers the
 only ask for privileges I actually intend to use.
 
 **Plugin-provided `:via` options.** Plugins can register new `:via`
-handlers for the `:package` action using `register-package-via-handler`.
+backends for the `:package` action using `register-package-backend`:
 For example, the `linacs-fedora` plugin adds `:via :rpm-ostree` for
 Fedora Atomic Desktops:
 
@@ -1543,28 +1545,29 @@ with `:sudo`-appropriate handling in your own action, the same way any
 custom fact or action works — LINACS just won't do it silently as a
 built-in.
 
-**Registering a new fact prober** (typically in `providers/*.lisp`):
+**Registering a new fact source** (typically in `providers/*.lisp`):
 
 ```lisp
-(register-fact-prober :codename
+(register-fact-source :codename
   (lambda ()
     (cond
       ((probe-file "/etc/fedora-release") :fedora-codename-here)
       (t :unknown))))
 ```
 
-If two different files register a prober for the *same* key, I won't
+If two different files register a source for the *same* key, I won't
 guess which one to trust — I'll stop at startup and tell you both
 registrants, so you can remove one or make one depend on and defer to the
 other.
 
 **Documenting a profile-only fact** (no prober — a fact your *profile*
-sets, like `:work-p`): use `declare-fact`, typically in `profiles/*.lisp`
-next to the profile that uses it. It takes the same `:type`/`:doc`
-keywords as `register-fact-prober`, but registers no prober:
+sets, like `:work-p`): use `declare-fact-source`, typically in
+`profiles/*.lisp` next to the profile that uses it. It takes the same
+`:type`/`:doc` keywords as `register-fact-source`, but registers no probe
+function:
 
 ```lisp
-(declare-fact :work-p
+(declare-fact-source :work-p
   :type '(member t nil)
   :doc "T on work machines, set by profile")
 ```
@@ -1572,9 +1575,9 @@ keywords as `register-fact-prober`, but registers no prober:
 This stops me from warning "possible typo?" every time a profile
 overrides the key, and makes it show up in `linacs list`. I only warn on
 profile overrides for genuinely unknown keys — those with neither a
-prober nor metadata. Don't `declare-fact` a key that already has a
-prober: the declared `:type` is enforced at probe time, so a legitimate
-result the prober actually returns (like `:unknown`) could trip it.
+registered source nor metadata. Don't `declare-fact-source` a key that
+already has a prober: the declared `:type` is enforced at probe time, so a
+legitimate result the prober actually returns (like `:unknown`) could trip it.
 
 ### 5.15 Profiles
 
@@ -1611,7 +1614,7 @@ linacs plan -C ~/my-home
 
 **Profile-only facts** (`:work-p` above, `:languages`, etc.) have no
 prober, so unless you document them I'd warn "possible typo?" on every
-run. Document them once next to the profiles with `declare-fact` (see
+run. Document them once next to the profiles with `declare-fact-source` (see
 §5.14) and the warnings stop — see the canonical example in
 `linacs-home/profiles/machines.lisp`.
 

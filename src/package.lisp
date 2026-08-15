@@ -47,8 +47,8 @@
    #:*linacs-abort-function*
 
     ;; facts / profiles
-    #:register-fact-prober
-    #:declare-fact
+    #:register-fact-source
+    #:declare-fact-source
     #:probe-all-facts
     #:fact
     #:fact*
@@ -57,9 +57,15 @@
     #:*facts-read*
     #:reset-facts-read
     #:snapshot-facts-read
-    #:*fact-probers*
-    #:*fact-metadata*
-    #:default-fact-probers
+    #:*fact-sources*
+    #:*fact-objects*
+    #:refresh-facts-plist
+    #:set-fact
+    #:fact-source #:make-fact-source #:fact-source-p #:fact-source-name #:fact-source-probe-fn
+    #:fact-source-registrant #:fact-source-type #:fact-source-doc
+    #:make-fact #:fact-p #:fact-name #:fact-value #:fact-confidence
+    #:fact-source-of
+    #:default-fact-sources
     #:define-profile
     #:*profiles*
     #:apply-profile
@@ -204,7 +210,13 @@
    #:execute-action
    #:dedup-actions
    #:order-actions
-   #:register-package-via-handler
+   #:package-backend #:make-package-backend #:*package-backends*
+   #:register-package-backend #:find-package-backend #:execute-package-backend
+   #:backend-via #:backend-executor #:backend-installed-p-fn
+   #:backend-install-fn #:backend-uninstall-fn
+   #:backend-privileged-p #:backend-description
+   #:backend-installed-p #:backend-install #:backend-uninstall
+   #:backend-needs-privilege-p
    #:register-repository-method
    #:find-repository-method
    #:*repository-methods*
@@ -336,8 +348,13 @@
     #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow #:repository
     ;; registration
     #:define-feature #:register-feature #:define-provider #:register-provider
-    #:define-catalog #:register-catalog #:register-fact-prober #:declare-fact
-    #:register-action-type #:register-package-via-handler #:register-pipeline-hook
+    #:define-catalog #:register-catalog #:register-fact-source #:declare-fact-source
+    #:register-action-type #:package-backend #:make-package-backend
+    #:register-package-backend #:find-package-backend #:execute-package-backend
+    #:backend-via #:backend-executor #:backend-privileged-p #:backend-description
+    #:backend-installed-p #:backend-install #:backend-uninstall
+    #:backend-needs-privilege-p
+    #:register-pipeline-hook
     #:register-repository-method
     #:register-sudo-requiring-action-type #:register-non-privileged-package-via
     ;; provider object (REFACTOR.org Thought 9 / Action 9)
@@ -422,8 +439,13 @@
     #:kernel-module #:hostname #:locale #:firewall #:cron #:command #:clone #:stow #:repository
     ;; registration
     #:define-feature #:register-feature #:define-provider #:register-provider
-    #:define-catalog #:register-catalog #:register-fact-prober #:declare-fact
-    #:register-action-type #:register-package-via-handler #:register-pipeline-hook
+    #:define-catalog #:register-catalog #:register-fact-source #:declare-fact-source
+    #:register-action-type #:package-backend #:make-package-backend
+    #:register-package-backend #:find-package-backend #:execute-package-backend
+    #:backend-via #:backend-executor #:backend-privileged-p #:backend-description
+    #:backend-installed-p #:backend-install #:backend-uninstall
+    #:backend-needs-privilege-p
+    #:register-pipeline-hook
     #:register-repository-method
     #:register-sudo-requiring-action-type #:register-non-privileged-package-via
     ;; provider object (REFACTOR.org Thought 9 / Action 9)
