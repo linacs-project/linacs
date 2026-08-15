@@ -33,17 +33,34 @@
                          :serial t
                          :components
                          ((:file "fact")))
-                (:file "discovery")
-                (:file "facts")
+                ;; Discovery: project/plugin discovery plus the fact sources.
+                ;; The fact classes load above (fact-model); the probers
+                ;; forward-reference WHICH (action-types/helpers.lisp) exactly
+                ;; as the historic src/facts.lisp did -- only called at probe
+                ;; time, after the whole system has loaded.
+                (:module "discovery"
+                         :pathname "discovery"
+                         :serial t
+                         :components
+                         ((:file "discovery")
+                          (:file "registry")
+                          (:file "probers")
+                          (:file "fact-sources")))
                (:file "profiles")
                (:file "catalogs")
-               (:file "features")
                (:module "provider-model"
                         :pathname "domain"
                         :serial t
                         :components
                         ((:file "provider")))
-               (:file "providers")
+               ;; Resolution: features and providers. provider-model loads
+               ;; first so REGISTER-PROVIDER can construct PROVIDER instances.
+               (:module "resolution"
+                        :pathname "resolution"
+                        :serial t
+                        :components
+                        ((:file "features")
+                         (:file "providers")))
                (:module "backends"
                          :pathname "backends/filesystem"
                          :serial t

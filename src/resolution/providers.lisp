@@ -1,4 +1,4 @@
-;;;; src/providers.lisp
+;;;; src/resolution/providers.lisp
 ;;;;
 ;;;; Provider registration and selection. A provider is a plain function from
 ;;;; facts to a list of action plists, registered against a feature name,

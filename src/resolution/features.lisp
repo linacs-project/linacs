@@ -1,4 +1,4 @@
-;;;; src/features.lisp
+;;;; src/resolution/features.lisp
 ;;;;
 ;;;; Feature definitions, dependency-graph resolution, and configuration.
 ;;;; A Feature is a named capability (:editor, :docker, ...) with an optional
