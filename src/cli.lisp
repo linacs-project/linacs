@@ -20,6 +20,8 @@
 (defstruct cli-opts
   (root ".") (platform nil) (profile nil) (provider-overrides '())
   (dry-run nil) (continue-on-error nil) (output nil) (verbosity 1) (quiet nil)
+  (format "sexp")
+  (feature nil)
   (sudo-password-stdin nil) (sudo-reset nil)
   (example nil)
   (help nil))
@@ -57,6 +59,12 @@ command's help instead of guessing what the person meant."
                  ((string= a "--continue") (setf (cli-opts-continue-on-error opts) t))
                  ((or (string= a "-o") (string= a "--output"))
                   (if args (setf (cli-opts-output opts) (pop args)) (push a unknown)))
+                 ((string= a "--format")
+                  (if args (setf (cli-opts-format opts) (pop args)) (push a unknown)))
+                 ((string= a "--feature")
+                  (if args
+                      (setf (cli-opts-feature opts) (intern (string-upcase (string-left-trim ":" (pop args))) :keyword))
+                      (push a unknown)))
                  ((and (> (length a) 1) (char= (char a 0) #\-)
                        (every (lambda (c) (char= c #\v)) (subseq a 1)))
                   (incf (cli-opts-verbosity opts) (1- (length a))))
@@ -203,6 +211,44 @@ For non-package actions, return an empty string."
   "Return a single-line legend string for the status glyphs."
   "[+] apply  [!] already present  [x] remove  [-] disabled")
 
+(defun summary-group (action)
+  "Classify ACTION into a reporter summary group: :packages, :files,
+:services, or :other. Used by the grouped apply summary and plan sections."
+  (case (action-type action)
+    (:package :packages)
+    ((:service :timer) :services)
+    ((:copy-file :symlink :ensure-dir :config-lines :config-ini :config-env
+      :secret :stow :clone) :files)
+    (t :other)))
+
+(defparameter *action-group-names*
+  '((:packages . "Packages")
+    (:files . "Files")
+    (:services . "Services")
+    (:other . "Other"))
+  "Display names for the ACTION-GROUP keywords, in canonical output order.")
+
+(defun action-group-name (group)
+  "The display name for an ACTION-GROUP keyword, falling back to the
+keyword's string form."
+  (or (cdr (assoc group *action-group-names*))
+      (string-downcase (string group))))
+
+(defun result-state-detail (result)
+  "A short human-readable detail string for an ACTION-RESULT, for verbose
+summaries: the underlying error message for failures, the elapsed duration
+for completed actions, else an empty string."
+  (cond
+    ((eq (result-status result) :failed)
+     (let ((err (result-error result)))
+       (cond
+         ((typep err 'execution-failure) (or (execution-failure-underlying err) "failed"))
+         (err (princ-to-string err))
+         (t "failed"))))
+    (result (let ((dur (result-duration result)))
+              (if dur (format nil "~,1fs" dur) "")))
+    (t "")))
+
 (defun colorize-glyph (glyph)
   "Wrap GLYPH in bold ANSI color if stdout is a TTY and NO_COLOR is not set.
 Maps: [v] green, [+]/[!]/[~]/[-] yellow, [x] red."
@@ -251,8 +297,19 @@ and in sudo's own credential cache via sudo -S."
       (when actions (preflight-notice actions))
       (let* ((prune-p (member :prune-explicitly-disabled (getf home :traits)))
              (verbose (>= (cli-opts-verbosity opts) 2))
+             (feature-filter (cli-opts-feature opts))
+             (feature-set (when feature-filter
+                            (collect-feature-subtree feature-filter)))
+             (filtered (if feature-set
+                           (remove-if-not
+                            (lambda (a)
+                              (let ((prov (action-provenance (action-identity a))))
+                                (and prov
+                                     (member (provenance-feature prov) feature-set))))
+                            actions)
+                           actions))
              (annotated
-              (loop for a in actions
+              (loop for a in filtered
                     for id = (action-identity a)
                     for glyph = (action-status-glyph a prune-p)
                     for via = (package-via-label a)
@@ -262,6 +319,9 @@ and in sudo's own credential cache via sudo -S."
                                   via
                                   (if verbose (provenance-string id) "")))))
         (format t "Resolved plan for ~a (traits: ~a):~%~%" (getf home :name) (or (getf home :traits) "none"))
+        (when feature-filter
+          (format t "Feature: ~a~%~a~%" (string-downcase (string feature-filter))
+                  (feature-tree-string feature-filter)))
         (let ((display (mapcar (lambda (row)
                                  (cons (colorize-glyph (first row)) (rest row)))
                                annotated)))
@@ -273,8 +333,9 @@ and in sudo's own credential cache via sudo -S."
                (present (count "[!]" annotated :key #'first :test #'string=))
                (remove (count "[x]" annotated :key #'first :test #'string=))
                (skipped (count "[-]" annotated :key #'first :test #'string=)))
-          (format t "~%~d action(s): ~d to apply, ~d already present~@[, ~d to remove~]~@[, ~d disabled~]~%"
-                  (length actions) to-apply present
+          (format t "~%~d action(s)~@[ for ~a~]: ~d to apply, ~d already present~@[, ~d to remove~]~@[, ~d disabled~]~%"
+                  (length filtered) (when feature-filter (string-downcase (string feature-filter)))
+                  to-apply present
                   (if (plusp remove) remove 0)
                   (if (plusp skipped) skipped 0))
           (format t "~a~%" (plan-summary-legend)))))
@@ -418,6 +479,13 @@ On non-interactive terminals (piped output, CI), shows static line labels."
        (if tty-p
            (format t "~C~C[K  ~a ~a ~a~%" #\Return #\Escape glyph type-name target)
            (format t "  ~a ~a ~a~%" glyph type-name target))
+       (let ((err (cond
+                    ((typep data 'execution-failure)
+                     (execution-failure-underlying data))
+                    (data (princ-to-string data))
+                    (t nil))))
+         (when (and err (not (string= err "")))
+           (format t "    Error: ~a~%" err)))
        (dolist (entry *captured-subprocess-lines*)
          (format t "    ~a~%" (cdr entry)))
        (finish-output))
@@ -428,9 +496,11 @@ On non-interactive terminals (piped output, CI), shows static line labels."
            (format t "  ~a ~a ~a~%" glyph type-name target))
        (finish-output)))))
 
-(defun print-apply-summary (plan)
-  "Print a summary table and legend after CMD-APPLY completes, from the
-executed ACTION-PLAN's results table (REFACTOR.org Action 5)."
+(defun print-apply-summary (plan &key verbose)
+  "Print a summary of the executed ACTION-PLAN (REFACTOR.org Action 5):
+grouped sections (Packages / Files / Services / Other) in canonical order,
+each with its own table. In VERBOSE mode, adds a per-action STATE DETAIL
+column (underlying error for failures, duration otherwise)."
   (let* ((results (plan-results plan))
          (rows (loop for a in (plan-actions plan)
                      for id = (action-identity a)
@@ -443,10 +513,11 @@ executed ACTION-PLAN's results table (REFACTOR.org Action 5)."
                                    (:skipped "[~]")
                                    (t "[-]"))
                      for via = (package-via-label a)
-                     collect (list glyph
+                     collect (list (summary-group a) glyph
                                    (string-downcase (string (action-type a)))
                                    (princ-to-string (action-target a))
-                                    via)))
+                                   via
+                                   (and verbose (result-state-detail result)))))
          (counts (loop for v being the hash-value of results
                        for status = (result-status v)
                        count status into total
@@ -456,9 +527,20 @@ executed ACTION-PLAN's results table (REFACTOR.org Action 5)."
                        count (eq status :skipped) into skipped
                        finally (return (list total applied unchanged failed skipped)))))
     (format t "~%")
-    (print-table '("STATUS" "TYPE" "TARGET" "VIA") rows)
+    (dolist (group (mapcar #'car *action-group-names*))
+      (let ((group-rows (remove-if-not (lambda (r) (eq (first r) group)) rows)))
+        (when group-rows
+          (format t "~a:~%" (action-group-name group))
+          (let ((display (mapcar (lambda (r)
+                                   (list* (colorize-glyph (second r)) (cddr r)))
+                                 group-rows)))
+            (if verbose
+                (print-table '("STATUS" "TYPE" "TARGET" "VIA" "STATE DETAIL") display)
+                (print-table '("STATUS" "TYPE" "TARGET" "VIA")
+                             (mapcar (lambda (r) (subseq r 0 4)) display))))
+          (terpri))))
     (destructuring-bind (total applied unchanged failed skipped) counts
-      (format t "~%~d action(s): ~d applied, ~d unchanged~@[, ~d failed~]~@[, ~d skipped~]~%"
+      (format t "~d action(s): ~d applied, ~d unchanged~@[, ~d failed~]~@[, ~d skipped~]~%"
               total applied unchanged
               (if (plusp failed) failed 0)
               (if (plusp skipped) skipped 0))
@@ -480,7 +562,7 @@ executed ACTION-PLAN's results table (REFACTOR.org Action 5)."
                                                            :continue-on-error (cli-opts-continue-on-error opts))
       (declare (ignore ordered home))
       (unless (cli-opts-dry-run opts)
-        (when plan (print-apply-summary plan)))
+        (when plan (print-apply-summary plan :verbose verbose)))
       (sudo-reset-after-run opts))))
 
 (defun cmd-diff (opts)
@@ -533,6 +615,34 @@ we call execute-action separately to collect :would-change statuses."
   "The provider the CLI's --provider T=P flag forces for FEATURE-NAME, or
 NIL if no override was given. Takes precedence over the home's :via."
   (cdr (assoc feature-name (cli-opts-provider-overrides opts))))
+
+(defun collect-feature-subtree (fname)
+  "Return FNAME plus every feature it transitively requires/composes-of
+(the full feature subtree rooted at FNAME), preserving breadth-first
+dependency order. Used by `plan --feature` to show the feature tree."
+  (let ((seen '()))
+    (labels ((walk (name)
+               (unless (member name seen)
+                 (push name seen)
+                 (let ((feature (feature-by-name name)))
+                   (dolist (dep (or (feature-requires feature)
+                                    (feature-composed-of feature)))
+                     (walk dep))))))
+      (walk fname))
+    (nreverse seen)))
+
+(defun feature-tree-string (fname &optional (indent 0))
+  "Render the feature subtree rooted at FNAME as an indented tree, e.g.:
+editor
+  packages
+    compilers
+  ui"
+  (with-output-to-string (out)
+    (let ((feature (feature-by-name fname)))
+      (format out "~v@t~a~@[ -- ~a~]~%" indent
+              (string-downcase (string fname)) (feature-description feature))
+      (dolist (dep (or (feature-requires feature) (feature-composed-of feature)))
+        (write-string (feature-tree-string dep (+ indent 2)) out)))))
 
 (defun cmd-explain (opts)
   (bootstrap opts)
@@ -617,9 +727,18 @@ for facts-str = (let ((prov (action-provenance id)))
                                                        :execute-mode :plan-only)
     (declare (ignore home))
     (let ((out (if (cli-opts-output opts) (open (cli-opts-output opts) :direction :output :if-exists :supersede) t))
-          (form (list :actions ordered)))
-      (unwind-protect (progn (print form out) (terpri out))
-        (unless (eq out t) (close out))))))
+          (format (string-downcase (cli-opts-format opts))))
+      (unwind-protect
+           (cond
+             ((string= format "sexp")
+              (print (list :actions ordered) out)
+              (terpri out))
+             ((string= format "json")
+              (format out "~a~%"
+                      (encode-json (list :actions (mapcar #'action->plist ordered)))))
+             (t
+              (error "Unsupported export format: ~a" format)))
+         (unless (eq out t) (close out))))))
 
 (defun feature-provider-summary (fname)
   "One string summarizing every provider registered for FNAME, e.g.
@@ -906,6 +1025,8 @@ already exists."
     (:dry-run  "-n, --dry-run"       "Show changes without executing them")
     (:continue "--continue"          "Keep going after a failed action")
     (:output   "-o, --output FILE"   "Write output to FILE")
+    (:format   "--format FORMAT"     "Output format for export: sexp (default) or json")
+    (:feature  "--feature NAME"      "Restrict plan/explain to a single feature and show its tree")
     (:verbose  "-v, --verbose"       "Increase verbosity (repeatable: -v, -vv, -vvv)")
     (:quiet    "--quiet"             "Only show errors")
     (:sudo-password-stdin "--sudo-password-stdin"
@@ -918,8 +1039,9 @@ already exists."
   (list
    (list :name "plan" :fn #'cmd-plan
           :summary "Show the resolved, ordered action list"
-          :options '(:root :profile :provider :platform :sudo-password-stdin :sudo-reset :verbose :quiet :help)
+          :options '(:root :profile :provider :platform :feature :sudo-password-stdin :sudo-reset :verbose :quiet :help)
           :examples '("linacs plan -C ~/my-home --profile work-laptop"
+                      "linacs plan --feature :editor -C ~/my-home   # just editor, with its feature tree"
                       "linacs plan --sudo-password-stdin < ~/.sudo-pass"))
    (list :name "apply" :fn #'cmd-apply
           :summary "Execute the ordered action list"
@@ -949,8 +1071,9 @@ already exists."
          :examples '("linacs graph -C ~/my-home --profile work-laptop"))
    (list :name "export" :fn #'cmd-export
           :summary "Write the resolved action list as a data s-expression"
-          :options '(:root :profile :provider :platform :output :verbose :quiet :help)
-          :examples '("linacs export -C ~/my-home --profile work-laptop -o /tmp/plan.sexp"))
+          :options '(:root :profile :provider :platform :output :format :verbose :quiet :help)
+          :examples '("linacs export -C ~/my-home --profile work-laptop -o /tmp/plan.sexp"
+                      "linacs export -C ~/my-home --profile work-laptop --format json -o /tmp/plan.json"))
    (list :name "list" :fn #'cmd-list
          :summary "List registered features, providers, catalogs, action types"
          :options '(:root :verbose :quiet :help)

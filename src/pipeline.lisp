@@ -166,7 +166,8 @@ Returns ORDERED so callers can inspect the results afterward (via the
 context's results table, or *ACTION-RESULTS*)."
   (with-execution-context context
     (preflight-notice ordered)
-    (preflight-sudo-prompt ordered)
+    (when (eq mode :apply)
+      (preflight-sudo-prompt ordered))
 
     (let* ((prune (member :prune-explicitly-disabled (getf home :traits)))
            (failed-ids (make-hash-table :test 'equal)))

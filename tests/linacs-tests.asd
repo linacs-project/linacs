@@ -55,6 +55,7 @@
                :serial t
                :components
                ((:file "flag-parsing")
+                (:file "report")
                 (:file "init")))
       (:module "facts"
                :serial t

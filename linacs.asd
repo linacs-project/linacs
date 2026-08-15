@@ -111,4 +111,5 @@
                (:file "pipeline")
                (:file "privilege")
                (:file "dsl")
+               (:file "json")
                (:file "cli")))))

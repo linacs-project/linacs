@@ -291,6 +291,11 @@
    #:*current-home-name*
    #:*current-home-traits*
 
+   ;; json encoding (REFACTOR.org Action 10, thought 19)
+   #:encode-json
+   #:json-quote-string
+   #:json-key-name
+
    ;; cli
    #:main
    #:parse-args
@@ -304,6 +309,7 @@
    #:cli-opts-dry-run
    #:cli-opts-continue-on-error
    #:cli-opts-output
+   #:cli-opts-format
    #:cli-opts-verbosity
    #:cli-opts-quiet
    #:cli-opts-sudo-password-stdin
