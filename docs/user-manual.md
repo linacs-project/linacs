@@ -796,6 +796,13 @@ Four packages, one job each:
   own `templates/*.lisp` files add `RENDER-*` functions here; I never
   define anything in it myself.
 
+These four packages are the *naming* boundary; the *load-unit* boundary is
+the ASDF split described in §4.1 above: `:linacs` (the library, everything
+in `src/` except `cli.lisp`) loads without the CLI, and `:linacs-cli`
+depends on `:linacs` and adds the command-line machinery. `build.sh` and
+`linacs-cli` are how you get a working `linacs` binary; `(asdf:load-system
+:linacs)` alone gives you the library.
+
 Two symbols are worth knowing about early: `:linacs.core` shadows
 `cl:package` and `cl:directory`, because the home-definition DSL wants
 `package` and `directory` as macro names. If you're working inside

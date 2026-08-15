@@ -98,6 +98,17 @@ the DSL-macro tests below, not here."
     (is (eq (nth-value 1 (find-symbol "PACKAGE" api)) :internal))
     (is (eq (nth-value 1 (find-symbol "DIRECTORY" api)) :internal))))
 
+(def-test api-does-not-export-cli-symbols ()
+  "The CLI (REFACTOR.org Action 11 -- thought 33) is a separate :linacs-cli
+system whose symbols live only in :linacs.core. They must NOT be re-exported
+through :linacs.api, so a plugin or home project loading just the library
+never sees (or depends on) the command-line machinery."
+  (let ((api (find-package :linacs.api)))
+    (dolist (name '("MAIN" "PARSE-ARGS" "CMD-INIT" "CLI-OPTS" "MAKE-CLI-OPTS"
+                    "CLI-OPTS-ROOT" "CLI-OPTS-FORMAT" "CLI-OPTS-FEATURE"))
+      (is (not (eq (nth-value 1 (find-symbol name api)) :external))
+          "~a must not be exported from :linacs.api" name))))
+
 (def-test api-dsl-works-from-consumer-package ()
   "The DSL macros expand when read in a :linacs.api consumer package --
 the actual linacs-home usage pattern."

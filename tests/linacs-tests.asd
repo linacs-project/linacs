@@ -44,13 +44,14 @@
                  (:file "project-root")
                  (:file "repository-prerequisites")
                  (:file "execution-context")))
-(:module "execution"
+     (:module "execution"
                  :serial t
                  :components
                  ((:file "result")
                   (:file "provenance")
                   (:file "plan")
                   (:file "events")))
+      (:file "json")
       (:module "cli"
                :serial t
                :components
