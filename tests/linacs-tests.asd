@@ -2,7 +2,7 @@
     :description "Test suite for LINACS core"
     :author "LINACS Contributors"
     :license "MIT"
-    :depends-on ("linacs" "fiveam")
+    :depends-on ("linacs" "linacs-cli" "fiveam")
     :serial t
     :components
     ((:file "package")

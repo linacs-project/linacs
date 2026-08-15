@@ -5,7 +5,7 @@ mkdir -p ~/.local/bin/
 sbcl \
   --eval '(require :asdf)' \
   --eval '(push #P"./" asdf:*central-registry*)' \
-  --eval '(asdf:load-system :linacs :force t)' \
+  --eval '(asdf:load-system :linacs-cli :force t)' \
   --eval '(sb-ext:save-lisp-and-die
              "linacs"
              :executable t

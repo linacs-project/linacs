@@ -52,7 +52,7 @@ sbcl \
   --non-interactive \
   --eval '(require :asdf)' \
   --eval '(push #P"./" asdf:*central-registry*)' \
-  --eval '(asdf:load-system :linacs :force t)' \
+  --eval '(asdf:load-system :linacs-cli :force t)' \
   --eval '(sb-ext:save-lisp-and-die
              "linacs"
              :executable t
@@ -738,7 +738,8 @@ entirely and come back if curiosity strikes.
 
 ```
 linacs/
-├── linacs.asd                 # Explicit ASDF :components list
+├── linacs.asd                 # Explicit ASDF :components list (:linacs library)
+├── linacs-cli.asd             # :linacs-cli system -- depends on :linacs, loads src/cli.lisp
 ├── src/
 │   ├── package.lisp         # The four packages: :linacs.core, :linacs.api, :linacs.log, :linacs-templates
 │   ├── conditions.lisp      # Every condition class + restart vocabulary
@@ -756,9 +757,14 @@ linacs/
 │   ├── pipeline.lisp        # The five-step Execution Model + hooks
 │   ├── privilege.lisp       # Privilege preflight for apply
 │   ├── dsl.lisp             # define-home + convenience macros
-│   └── cli.lisp             # Argument parsing + dispatch
+│   └── json.lisp            # JSON encoder (:linacs.core, used by cli export)
 └── docs/                    # This manual, plus design documents
 ```
+
+`src/cli.lisp` (argument parsing + dispatch) is loaded by the `:linacs-cli`
+system, not by `:linacs` — the library loads in a fresh image without the
+CLI (REFACTOR.org Action 11). `(asdf:load-system :linacs)` gives you the
+library; `(asdf:load-system :linacs-cli)` (or `build.sh`) adds the CLI.
 
 Every file starts with a header describing exactly what it does and how
 to use it — that header is the fastest way to orient yourself in any
@@ -2525,7 +2531,7 @@ from a version you thought you'd already fixed. The reliable fix is to
 force a full rebuild:
 
 ```lisp
-(asdf:load-system :linacs :force t))
+(asdf:load-system :linacs-cli :force t)
 ```
 
 I'd rather you hit this note once here than debug it from a cryptic error
