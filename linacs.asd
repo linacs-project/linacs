@@ -145,12 +145,20 @@
                ;; The built-in service backends (systemd / systemd-user) load
                ;; here too, after action-types/helpers.lisp, so their
                ;; primitives can reference RUN-PRIVILEGED.
-               (:module "service-backends"
-                         :pathname "backends/services"
-                         :serial t
-                         :components
-                         ((:file "systemd")))
-               (:file "pipeline")
+                (:module "service-backends"
+                          :pathname "backends/services"
+                          :serial t
+                          :components
+                          ((:file "systemd")))
+               ;; The home-definition value object loads before pipeline and
+               ;; dsl so DEFINE-HOME's thunk can construct instances and the
+               ;; pipeline/CLI can read them via the HOME-DEFINITION-* accessors.
+               (:module "home-model"
+                        :pathname "domain"
+                        :serial t
+                        :components
+                        ((:file "home")))
+                (:file "pipeline")
                (:file "privilege")
                (:file "dsl")
                (:file "json")))))

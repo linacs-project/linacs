@@ -167,12 +167,13 @@ itself)."
               (setf *current-home-actions* nil)
               (setf *current-home-package-preference* nil)
               ,@forms
-              (list :name ',name
-                    :traits ',traits
-                    :asset-root ',asset-root
-                    :use-features (reverse *current-home-use-features*)
-                    :actions (reverse *current-home-actions*)
-                    :package-preference *current-home-package-preference*)))))
+              (make-home-definition
+               :name ',name
+               :traits ',traits
+               :asset-root ',asset-root
+               :use-features (reverse *current-home-use-features*)
+               :actions (reverse *current-home-actions*)
+               :package-preference *current-home-package-preference*)))))
 
 (defun run-current-home-thunk ()
   (unless *current-home-thunk*

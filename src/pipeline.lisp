@@ -38,7 +38,7 @@ the project root itself). Canonicalized via TRUENAME when the directory
 exists, so a \"..\" asset root yields a clean path suitable for symlink
 creation."
   (let* ((config (uiop:ensure-directory-pathname (or project-root ".")))
-         (rel (uiop:ensure-directory-pathname (or (getf home :asset-root) ".")))
+         (rel (uiop:ensure-directory-pathname (or (home-definition-asset-root home) ".")))
          (merged (merge-pathnames rel config)))
     (if (probe-file merged)
         (namestring (truename merged))
@@ -107,7 +107,7 @@ alongside it."
 (defun resolve-plan (&key profile project-root provider-overrides platform)
   "Run Execution Model steps 1-4: probe facts, merge profile, run home
 thunk, resolve features, collect actions, deduplicate, and order.
-Returns (values ordered-actions home-plist).
+Returns (values ordered-actions home-definition).
 Discoverably named so callers that only need resolution (plan, check,
 diff, explain) can skip the execution step entirely.
 PROVIDER-OVERRIDES is a (feature . provider) alist from --provider T=P;
@@ -124,11 +124,11 @@ locate their sources under it regardless of the invocation cwd."
   (clrhash *action-results*)
 
   (let* ((home (run-current-home-thunk))
-         (*package-preference-chain* (or (getf home :package-preference) '(:system)))
+         (*package-preference-chain* (or (home-definition-package-preference home) '(:system)))
          (*project-root* (or project-root "."))
          (*asset-root* (resolve-asset-root *project-root* home))
-         (ignored (register-feature-customs (getf home :use-features)))
-         (provider-actions (collect-actions-from-features (getf home :use-features)
+         (ignored (register-feature-customs (home-definition-use-features home)))
+         (provider-actions (collect-actions-from-features (home-definition-use-features home)
                                                           :provider-overrides provider-overrides
                                                           :project-root *project-root*))
          (user-actions (mapcar (lambda (a)
@@ -140,7 +140,7 @@ locate their sources under it regardless of the invocation cwd."
                                     (append (copy-list a)
                                             (list :project-root *project-root*
                                                   :asset-root *asset-root*))))
-                                (getf home :actions)))
+                                (home-definition-actions home)))
          (all-actions (append user-actions provider-actions)))
     (declare (ignore ignored))
     (resolve-package-vias all-actions)
@@ -169,7 +169,7 @@ context's results table, or *ACTION-RESULTS*)."
     (when (eq mode :apply)
       (preflight-sudo-prompt ordered))
 
-    (let* ((prune (member :prune-explicitly-disabled (getf home :traits)))
+    (let* ((prune (member :prune-explicitly-disabled (home-definition-traits home)))
            (failed-ids (make-hash-table :test 'equal)))
       (catch 'linacs-abort
         (dolist (action ordered)

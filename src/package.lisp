@@ -314,6 +314,13 @@
    #:*current-home-name*
    #:*current-home-traits*
 
+   ;; home-definition value object (REFACTOR.org Thought 12 / Action 17);
+   ;; engine-internal -- deliberately not re-exported through :linacs.api
+   #:home-definition #:make-home-definition
+   #:home-definition-name #:home-definition-traits #:home-definition-asset-root
+   #:home-definition-use-features #:home-definition-actions
+   #:home-definition-package-preference
+
    ;; json encoding (REFACTOR.org Action 10, thought 19)
    #:encode-json
    #:json-quote-string
