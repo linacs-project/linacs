@@ -2291,6 +2291,45 @@ linacs init       -C DIR
 linacs version
 ```
 
+Every command that shows you the plan (`plan`, `diff`, `explain`, `export`,
+`check`) resolves — and `apply` executes — the same resolved action list:
+
+```
+                configuration
+          (home.lisp + plugins + profiles)
+                      │
+                      ▼
+                 resolution
+        (features → providers → dedup → order)
+                      │
+                      ▼
+                      PLAN
+       (in-memory, rebuilt on every invocation)
+                      │
+      ┌────────────────────┼──────────────────────┐
+      │                    │                      │
+      ▼                   ▼                      ▼
+plan / diff / explain   export / check         apply
+  (human views:           (sexp-or-json          │
+   ordered action          output via -o /       ▼
+   tables, feature         --format; resolve   execution
+   graph + chosen          steps 0-4 only,       │
+   providers, and a        no execution,         ▼
+   check-mode diff         surfacing           results
+   of would-change)        resolution errors)
+```
+
+`plan`, `diff`, `explain`, `export`, and `check` all resolve the same
+ordered action list in `:plan-only` mode (steps 0-4, no execution); only
+`apply` executes — feeding each action to its executor and reporting the
+results. The `PLAN` is not a file you can point commands at — each command
+rebuilds it from the same configuration, so `plan`, `diff`, and `apply`
+are always in agreement. `apply -n` (`--dry-run`) runs the executors in
+`:check` mode: it probes every action and prints the same apply summary,
+but changes nothing. The commands that see no plan at all: `validate`
+(syntax only), `graph` (the abstract feature DAG), and `list`/`facts`/
+`doctor` (registries and facts).
+
 **`plan`** — resolve everything, print the ordered action list, touch
 nothing:
 
