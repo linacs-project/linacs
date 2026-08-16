@@ -744,16 +744,33 @@ linacs/
 │   ├── package.lisp         # The four packages: :linacs.core, :linacs.api, :linacs.log, :linacs-templates
 │   ├── conditions.lisp      # Every condition class + restart vocabulary
 │   ├── log.lisp             # Leveled logging
-│   ├── discovery.lisp       # Step 0: directory + ASDF-plugin discovery
-│   ├── facts.lisp           # Fact prober registration/probing
+│   ├── domain/              # Pure value objects, loaded first
+│   │   ├── fact.lisp        # fact / fact-source classes + readers
+│   │   ├── provider.lisp    # provider class + provide-actions protocol
+│   │   ├── home.lisp        # home-definition value object
+│   │   ├── action/          # action base class, protocol, state generics
+│   │   └── execution/       # execution-context, action-result, provenance, events
+│   ├── discovery/           # Step 0: discovery + fact probing
+│   │   ├── discovery.lisp   # directory + ASDF-plugin discovery
+│   │   ├── registry.lisp    # fact registries, probe-all-facts, fact readers
+│   │   ├── probers.lisp     # the probe-* implementations
+│   │   └── fact-sources.lisp# default-fact-sources registration
+│   ├── resolution/          # Step 2: feature DAG + provider selection
+│   │   ├── features.lisp    # feature registry + DAG walk
+│   │   └── providers.lisp   # provider registration/selection
 │   ├── profiles.lisp        # Named fact-override sets
 │   ├── catalogs.lisp        # Canonical name -> distro-string tables
-│   ├── features.lisp        # Feature DAG + resolution
-│   ├── providers.lisp       # Provider registration/selection
 │   ├── actions.lisp         # Identity, dedup, ordering, dispatch
 │   ├── secrets.lisp         # :pass/:vault/:file/:prompt resolution
 │   ├── templates.lisp       # RENDER-* discovery
 │   ├── action-types/        # One file per built-in executor
+│   ├── backends/            # First-class host-manipulation backends
+│   │   ├── filesystem/      # real / memory / recording filesystems
+│   │   ├── packages/        # package-backend protocol + built-in vias
+│   │   ├── services/        # service-backend protocol + systemd
+│   │   └── repositories/    # repository-backend protocol
+│   ├── planning/            # ActionPlan value object
+│   │   └── plan.lisp
 │   ├── pipeline.lisp        # The five-step Execution Model + hooks
 │   ├── privilege.lisp       # Privilege preflight for apply
 │   ├── dsl.lisp             # define-home + convenience macros
@@ -827,16 +844,20 @@ lives in a plain hash table, held in a special variable:
 | `*pipeline-hooks*` | `register-pipeline-hook` | Yes |
 | `*profiles*` | `define-profile` | Yes |
 | `*dsl-forms*` | `register-dsl-form` / core built-ins | Yes |
+| `*package-backends*` | `register-package-backend` (core built-ins + plugins) | Yes |
+| `*service-backends*` | `register-service-backend` | Yes |
+| `*repository-backends*` | `register-repository-backend` | Yes |
 | `*action-types*` | `register-action-type` | **No** |
 | `*action-type-descriptions*` | `register-action-type :description` | **No** |
 
-The first six are populated by **Discovery** (a home project's own
-`.lisp` files, loaded fresh on every single command) and are cleared at
-the start of every `bootstrap` call specifically so that running more
-than one command in a long-lived Lisp image — a REPL, a saved image used
-interactively — never silently accumulates stale or duplicate
-registrations. A fresh per-invocation process never would have noticed
-the difference; a persistent one does, and did, until this was fixed.
+The first nine are populated by **Discovery** (a home project's own
+`.lisp` files and the plugin `register-*` forms, loaded fresh on every
+single command) and are cleared at the start of every `bootstrap` call
+specifically so that running more than one command in a long-lived Lisp
+image — a REPL, a saved image used interactively — never silently
+accumulates stale or duplicate registrations. A fresh per-invocation
+process never would have noticed the difference; a persistent one does,
+and did, until this was fixed.
 
 The last two are populated once, when the `:linacs` system itself loads
 (each `action-types/*.lisp` file registers its own type at the top
@@ -891,10 +912,10 @@ A home project's `features/`, `providers/`, `catalogs/`, and so on are
 loaded automatically — that's the entire point of Discovery. My own
 `src/` is not: `linacs.asd` lists every file explicitly, in dependency
 order, with `:serial t`. This isn't an oversight; Discovery is
-*implemented* in `src/discovery.lisp`, and a system can't bootstrap
-itself via a mechanism it hasn't loaded yet. So my own layout is ordinary
-ASDF, and a home project's layout is the directory convention Discovery
-provides — two different things, on purpose.
+*implemented* in `src/discovery/discovery.lisp`, and a system can't
+bootstrap itself via a mechanism it hasn't loaded yet. So my own layout
+is ordinary ASDF, and a home project's layout is the directory convention
+Discovery provides — two different things, on purpose.
 
 ### 4.6 Extension points, summarized
 
@@ -1299,7 +1320,7 @@ without any plugin:
 | `:npm` | Node.js packages |
 | `:flatpak` | Flatpak applications and runtimes |
 | `:toolbox` | Containerised CLI tools (toolbox daemon) |
-| `:podman` | Alias for the toolbox handler |
+| `:podman` | Containerised CLI tools via podman (toolbox backend) |
 | `:appimage` | Standalone AppImage executables |
 
 **Repositories come along automatically.** If a canonical package needs a
@@ -2339,11 +2360,11 @@ linacs export -C ~/my-home --profile work-laptop -o /tmp/plan.sexp
 ```
 
 **`list`** — every registered feature, provider, catalog, action type,
-DSL form, and fact, as aligned tables, each with whatever description you
-gave it (in `:description` on `define-feature`, `define-provider`, or a
-built-in action type's own documentation). Features get a combined view
-showing every provider registered for them (and any `:composed-of`
-sub-features) in one row:
+DSL form, fact, and package/service/repository backend, as aligned
+tables, each with whatever description you gave it (in `:description` on
+`define-feature`, `define-provider`, or a built-in action type's own
+documentation). Features get a combined view showing every provider
+registered for them (and any `:composed-of` sub-features) in one row:
 
 ```sh
 linacs list -C ~/my-home
