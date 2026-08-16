@@ -124,8 +124,8 @@ instance."))
 (defmethod action-project-root ((action list)) (getf action :project-root))
 
 (defgeneric action-identity (action)
-  (:documentation "Compute the canonical identity for ACTION (a plist or an
-ACTION instance). Delegates to the type's registered identity function in
+  (:documentation "Compute the canonical identity for ACTION (a plist).
+Delegates to the type's registered identity function in
 *ACTION-IDENTITY-FUNCTIONS* (set via REGISTER-ACTION-TYPE :identity), or
 falls back to (type . target). Plugin authors register identity functions
 for new action types so ACTION-IDENTITY never needs a hardcoded cond chain:
@@ -164,28 +164,20 @@ historic plists read via RESULT-STATUS for compatibility."
 
 (defgeneric action-source-label (action)
   (:documentation "Human-readable label of where ACTION came from, for
-conflict reports. Works on plists and ACTION instances."))
+conflict reports."))
 (defmethod action-source-label ((action list))
   (or (getf action :source) "unspecified"))
 
 (defgeneric action->plist (action)
-  (:documentation "The plist form of ACTION. For an ACTION instance, the
-canonical, lossless plist reconstruction (defined in protocol.lisp); for a
-plist, the plist itself. The conversion seam between the CLOS object model
-and the external plist convention."))
+  (:documentation "The plist form of ACTION. A plist is its own plist.
+The conversion seam between the plist convention and the external plist
+convention (identity for plists)."))
 (defmethod action->plist ((action list)) action)
-
-(defun action-p (object)
-  "T if OBJECT is an ACTION instance (as opposed to a plist). Uses
-FIND-CLASS so this can be compiled before the ACTION class is defined."
-  (and (not (listp object))
-       (let ((class (find-class 'action nil)))
-         (and class (typep object class)))))
 
 (defgeneric same-action-content-p (a b)
   (:documentation "Two actions are content-equal if their plists are EQUAL
 once :source, :priority, and identity-irrelevant bookkeeping keys are
-stripped. Works on plists and ACTION instances."))
+stripped."))
 (defmethod same-action-content-p ((a list) (b list))
   (flet ((strip (a) (let ((c (copy-list a)))
                        (remf c :source)

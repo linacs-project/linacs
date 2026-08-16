@@ -748,7 +748,6 @@ linacs/
 │   │   ├── fact.lisp        # fact / fact-source classes + readers
 │   │   ├── provider.lisp    # provider class + provide-actions protocol
 │   │   ├── home.lisp        # home-definition value object
-│   │   ├── action/          # action base class, protocol, state generics
 │   │   └── execution/       # execution-context, action-result, provenance, events
 │   ├── discovery/           # Step 0: discovery + fact probing
 │   │   ├── discovery.lisp   # directory + ASDF-plugin discovery

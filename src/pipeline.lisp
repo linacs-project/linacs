@@ -49,21 +49,13 @@ creation."
 :asset-root if present (installed by RESOLVE-PLAN), else *ASSET-ROOT*
 merged against the action's :project-root (or *PROJECT-ROOT*). This makes
 direct executor calls -- e.g. unit tests that build an action by hand --
-resolve under the project root by default. Works on plists and ACTION
-instances."))
+resolve under the project root by default."))
 (defmethod action-asset-root ((action list))
   (or (getf action :asset-root)
       (namestring (uiop:ensure-directory-pathname
                    (merge-pathnames (uiop:ensure-directory-pathname *asset-root*)
                                     (uiop:ensure-directory-pathname
                                      (or (getf action :project-root) *project-root*)))))))
-
-(defmethod action-asset-root ((action action))
-  (or (action-asset-root-slot action)
-      (namestring (uiop:ensure-directory-pathname
-                   (merge-pathnames (uiop:ensure-directory-pathname *asset-root*)
-                                    (uiop:ensure-directory-pathname
-                                     (or (action-project-root action) *project-root*)))))))
 
 (defun collect-actions-from-features (use-feature-requests &key provider-overrides project-root)
   "Step 2 (feature half): walk the feature graph starting from each

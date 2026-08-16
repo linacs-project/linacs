@@ -28,8 +28,6 @@
 
 (in-package :linacs.core)
 
-(defun stow-quote (path) (format nil "\"~a\"" path))
-
 (defun stow-parent-dir (path)
   (let* ((trimmed (string-right-trim "/" path))
          (pos (position #\/ trimmed :from-end t)))

@@ -170,12 +170,6 @@ report is consistent whether or not anything is registered."
         (format t "~a~%" (row-string (mapcar (lambda (w) (make-string w :initial-element #\-)) widths)))
         (dolist (r truncated-rows) (format t "~a~%" (row-string r)))))))
 
-(defun action-type-counts (actions)
-  (let ((counts (make-hash-table :test 'eq)))
-    (dolist (a actions) (incf (gethash (action-type a) counts 0)))
-    (sort (loop for k being the hash-key of counts using (hash-value v) collect (cons k v))
-          #'string< :key (lambda (p) (string (car p))))))
-
 (defun action-status-glyph (action prune-p)
   "Return the status glyph for ACTION based on its :disabled flag and the
 PRUNE-P trait: [x] disabled+prune, [-] disabled only, [+] would-change,

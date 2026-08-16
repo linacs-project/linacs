@@ -100,8 +100,6 @@
     #:provider-description
 
    ;; actions
-   #:make-action
-   #:plist->action
    #:action->plist
    #:action-priority
    #:action-force
@@ -114,7 +112,6 @@
    #:action-owner
    #:action-group
     #:same-action-content-p
-    #:action-p
     #:action-type
     #:action-target
     #:action-source-label
@@ -122,13 +119,6 @@
     #:action-identity
     #:action-description
     #:action-dedup-behavior
-    #:*action-statuses*
-    #:executor-status
-    #:current-state
-    #:desired-state
-    #:diff-state
-    #:apply-state
-    #:remove-state
     ;; execution context (REFACTOR.org Action 4)
     #:execution-context
     #:make-execution-context
@@ -396,13 +386,11 @@
     ;; authoring helpers
     #:fact #:fact* #:fact-known-p #:feature-custom #:catalog-lookup
     #:action-type #:action-target #:action-source-label #:action-identity
-    #:make-action #:plist->action #:action->plist #:same-action-content-p
+    #:action->plist #:same-action-content-p
     #:action-priority #:action-force #:action-disabled #:action-depends-on
     #:action-source #:action-location #:action-project-root #:action-mode
-    #:action-owner #:action-group #:action-p
+    #:action-owner #:action-group
     #:action-description #:action-dedup-behavior
-    #:*action-statuses* #:executor-status
-    #:current-state #:desired-state #:diff-state #:apply-state #:remove-state
     #:report #:which #:shell-ok-p #:run-privileged #:expand-home
     #:*project-root* #:*asset-root* #:action-asset-root
     ;; execution context (REFACTOR.org Action 4)
@@ -500,13 +488,11 @@
     ;; authoring helpers
     #:fact #:fact* #:fact-known-p #:feature-custom #:catalog-lookup
     #:action-type #:action-target #:action-source-label #:action-identity
-    #:make-action #:plist->action #:action->plist #:same-action-content-p
+    #:action->plist #:same-action-content-p
     #:action-priority #:action-force #:action-disabled #:action-depends-on
     #:action-source #:action-location #:action-project-root #:action-mode
-    #:action-owner #:action-group #:action-p
+    #:action-owner #:action-group
     #:action-description #:action-dedup-behavior
-    #:*action-statuses* #:executor-status
-    #:current-state #:desired-state #:diff-state #:apply-state #:remove-state
     #:report #:which #:shell-ok-p #:run-privileged #:expand-home
     #:*project-root* #:*asset-root* #:action-asset-root
     ;; execution context (REFACTOR.org Action 4)
