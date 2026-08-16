@@ -47,6 +47,13 @@ same priority, warning instead of signaling ACTION-CONFLICT. Plugin authors
 declare the behavior for new action types via the :dedup-behavior keyword on
 REGISTER-ACTION-TYPE.")
 
+(defvar *action-conflicts* nil
+  "List of conflict records (identity -> (:type ... :kept ... :dropped ...))
+accumulated by DEDUP-ACTIONS, in resolution order. Callers reset it before a
+dedup pass (RESOLVE-PLAN does) and read it afterward to populate the plan's
+:conflicts table for reporting -- e.g. `linacs plan` and `linacs check`
+showing 'Conflicts: N'. Pure reporting; resolution semantics are unaffected.")
+
 (defun register-action-type (type executor-fn &key description identity dedup-behavior)
   (setf (gethash type *action-types*) executor-fn)
   (when description (setf (gethash type *action-type-descriptions*) description))
@@ -308,29 +315,45 @@ even for additive types."
            (setf (gethash id by-identity) action))
           ((action-force existing)
            nil) ; existing already forced; keep it, drop new
-          ((same-action-content-p action existing)
-           nil) ; identical, drop the duplicate silently
-          (t
-           (let ((pa (action-priority action))
-                 (pe (action-priority existing)))
-             (cond
-               ((and (eq pa :user) (eq pe :provider))
-                (setf result (substitute action existing result))
-                (setf (gethash id by-identity) action))
-               ((and (eq pa :provider) (eq pe :user))
-                nil) ; existing user-level def wins, drop provider action
-               ((eq (action-dedup-behavior action) :additive)
-                (linacs.log:warn* "Duplicate ~a identity for ~a; keeping both, continuing."
-                                  (action-type action) (action-target action))
-                (push action result))
-               (t
-                (restart-case
-                    (error 'action-conflict :identity id
-                           :def-a (action-source-label existing)
-                           :def-b (action-source-label action))
-                  (use-first () :report "Keep definition A (the existing action)"
-                             nil) ; existing is already in result/by-identity; nothing to do
+((same-action-content-p action existing)
+            nil) ; identical, drop the duplicate silently
+           (t
+            (let ((pa (action-priority action))
+                  (pe (action-priority existing)))
+              (cond
+                ((and (eq pa :user) (eq pe :provider))
+                 (push (list id (list :type :override
+                                      :kept :user
+                                      :dropped (action-source-label existing)))
+                       *action-conflicts*)
+                 (setf result (substitute action existing result))
+                 (setf (gethash id by-identity) action))
+                ((and (eq pa :provider) (eq pe :user))
+                 (push (list id (list :type :override
+                                      :kept :user
+                                      :dropped (action-source-label action)))
+                       *action-conflicts*)
+                 nil) ; existing user-level def wins, drop provider action
+                ((eq (action-dedup-behavior action) :additive)
+                 (linacs.log:warn* "Duplicate ~a identity for ~a; keeping both, continuing."
+                                   (action-type action) (action-target action))
+                 (push action result))
+                (t
+                 (restart-case
+                     (error 'action-conflict :identity id
+                            :def-a (action-source-label existing)
+                            :def-b (action-source-label action))
+                   (use-first () :report "Keep definition A (the existing action)"
+                              (push (list id (list :type :conflict
+                                                   :kept (action-priority existing)
+                                                   :dropped (action-source-label action)))
+                                    *action-conflicts*)
+                              nil) ; existing is already in result/by-identity; nothing to do
                    (use-second () :report "Keep definition B (the new action)"
+                               (push (list id (list :type :conflict
+                                                    :kept (action-priority action)
+                                                    :dropped (action-source-label existing)))
+                                     *action-conflicts*)
                                (setf result (substitute action existing result))
                                (setf (gethash id by-identity) action))))))))))
     (nreverse result)))

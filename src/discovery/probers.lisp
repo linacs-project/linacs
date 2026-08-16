@@ -79,6 +79,37 @@ some machines (multi-battery Thinkpads among them) only expose BAT1."
     ((uiop:getenv "DISPLAY") :x11)
     (t nil)))
 
+(defun probe-desktop-environment ()
+  "Probe the active desktop environment from $XDG_CURRENT_DESKTOP.
+
+Returns :GNOME, :KDE, :XFCE, :SWAY, :HYPRLAND, or a generic :OTHER for any
+recognizable desktop; returns NIL if the variable is unset (headless/SSH).
+Moved into core from the linacs-virtualisation plugin (USERUX redesign
+Phase 1): the :desktop fact is a machine truth every presentation layer
+wants, not a virtualisation-plugin concern."
+  (let* ((raw (uiop:getenv "XDG_CURRENT_DESKTOP"))
+         (desktop (and raw (string-trim '(#\Space) raw))))
+    (when (and desktop (plusp (length desktop)))
+      (cond
+        ((search "GNOME" desktop :test #'char-equal)    :gnome)
+        ((search "KDE" desktop :test #'char-equal)      :kde)
+        ((search "XFCE" desktop :test #'char-equal)     :xfce)
+        ((search "SWAY" desktop :test #'char-equal)     :sway)
+        ((search "Hyprland" desktop :test #'char-equal) :hyprland)
+        ((search "i3" desktop :test #'char-equal)       :i3)
+        (t                                              :other)))))
+
+(defun probe-os-version ()
+  "The distro version identifier from /etc/os-release's VERSION_ID (e.g.
+\"42\"), or NIL when unavailable (no os-release, or no VERSION_ID line).
+Pairs with PROBE-OS for machine headers like \"Fedora 42\"."
+  (ignore-errors
+    (with-open-file (f "/etc/os-release")
+      (loop for line = (read-line f nil nil)
+            while line
+            when (and (>= (length line) 11) (string= line "VERSION_ID=" :end1 11))
+            do (return (string-trim "\"" (subseq line 11)))))))
+
 ;;; --- :gpu-vendor ---------------------------------------------------------
 
 (defun gpu-vendor-id->keyword (id)

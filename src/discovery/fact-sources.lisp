@@ -24,6 +24,12 @@
   (register-fact-source :display-server #'probe-display-server "linacs-core"
     :type '(or (member :wayland :x11) null)
     :doc "Active display server; nil in headless/SSH environments")
+  (register-fact-source :desktop #'probe-desktop-environment "linacs-core"
+    :type '(or null (member :gnome :kde :xfce :sway :hyprland :i3 :other))
+    :doc "Desktop environment from $XDG_CURRENT_DESKTOP, or nil if headless/SSH")
+  (register-fact-source :os-version #'probe-os-version "linacs-core"
+    :type '(or string null)
+    :doc "Distro version identifier from /etc/os-release VERSION_ID")
   (register-fact-source :gpu-vendor #'probe-gpu-vendor "linacs-core"
     :type 'list
     :doc "List of keyword GPU vendor identifiers found via DRM")

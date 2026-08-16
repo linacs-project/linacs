@@ -47,11 +47,13 @@ or NIL."
 
 (defun deduplicate-plan (plan)
   "Return a NEW plan with the same tables and the action list run through
-DEDUP-ACTIONS. The original plan is untouched (pure operation)."
+DEDUP-ACTIONS, its :conflicts table populated from the run's
+*ACTION-CONFLICTS*. The original plan is untouched (pure operation)."
+  (setf *action-conflicts* nil)
   (make-action-plan :actions (dedup-actions (plan-actions plan))
                     :provenance (plan-provenance plan)
                     :results (plan-results plan)
-                    :conflicts (plan-conflicts plan)))
+                    :conflicts *action-conflicts*))
 
 (defun order-plan (plan)
   "Return a NEW plan with the same tables and the action list run through

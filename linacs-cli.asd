@@ -26,4 +26,5 @@
     ((:module "src"
               :serial t
               :components
-              ((:file "cli")))))
+              ((:file "cli")
+               (:file "report")))))

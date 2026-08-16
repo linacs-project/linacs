@@ -316,26 +316,37 @@
    #:json-quote-string
    #:json-key-name
 
-   ;; cli
-   #:main
-   #:parse-args
-   #:cmd-init
-   #:cli-opts
-   #:make-cli-opts
-   #:cli-opts-root
-   #:cli-opts-platform
-   #:cli-opts-profile
-   #:cli-opts-provider-overrides
-   #:cli-opts-dry-run
-   #:cli-opts-continue-on-error
-   #:cli-opts-output
-   #:cli-opts-format
-   #:cli-opts-verbosity
-   #:cli-opts-quiet
-   #:cli-opts-sudo-password-stdin
-   #:cli-opts-sudo-reset
-   #:cli-opts-example
-   #:cli-opts-help))
+;; cli
+    #:main
+    #:parse-args
+    #:cmd-init
+    #:cli-opts
+    #:make-cli-opts
+    #:cli-opts-root
+    #:cli-opts-platform
+    #:cli-opts-profile
+    #:cli-opts-provider-overrides
+    #:cli-opts-dry-run
+    #:cli-opts-continue-on-error
+    #:cli-opts-output
+    #:cli-opts-format
+    #:cli-opts-verbosity
+    #:cli-opts-quiet
+    #:cli-opts-sudo-password-stdin
+    #:cli-opts-sudo-reset
+    #:cli-opts-example
+    #:cli-opts-help
+    ;; presentation (src/report.lisp, USERUX redesign Phase 1)
+    #:report-context #:make-report-context
+    #:report-context-plan #:report-context-facts #:report-context-home #:report-context-opts
+    #:*action-verbs* #:action-verb #:action-natural-target
+    #:*desktop-display-names* #:desktop-display-name #:fact-display-string #:os-display-string
+    #:fact-label #:facts-snapshot-string #:reason-line
+    #:machine-header
+    #:blank-line #:rule-line #:summary-line #:next-steps
+    #:render-action-line #:status-glyph
+    #:collect-check-statuses
+    #:*action-conflicts*))
 
 (defpackage :linacs.api
   (:use :cl)

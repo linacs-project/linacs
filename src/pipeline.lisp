@@ -138,6 +138,7 @@ locate their sources under it regardless of the invocation cwd."
     (resolve-package-vias all-actions)
     (setf all-actions (resolve-repository-prerequisites all-actions))
     (run-hooks :after-resolve *facts* all-actions)
+    (setf *action-conflicts* nil)
     (let* ((deduped (dedup-actions all-actions))
            (ordered (order-actions deduped)))
       (run-hooks :before-execute *facts* ordered)
@@ -224,7 +225,8 @@ apply, and apply --dry-run all consume the same ActionPlan
                     :provider-overrides provider-overrides :platform platform)
     (let ((plan (make-action-plan :actions ordered
                                   :provenance (context-provenance)
-                                  :results (context-results))))
+                                  :results (context-results)
+                                  :conflicts *action-conflicts*)))
       (report-event (make-plan-started :plan plan))
       (unless (eq execute-mode :plan-only)
         (execute-plan ordered home :mode execute-mode :continue-on-error continue-on-error
