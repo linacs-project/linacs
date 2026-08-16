@@ -115,7 +115,8 @@ than asking for it up front."
 (defun execute-flatpak-package (action name &key mode)
   (let ((installed (flatpak-installed-p name action)))
     (case mode
-      (:check (report (if installed :unchanged :would-change) :target name))
+      (:check (report (if installed :unchanged :would-change)
+                      :target name :current (list :installed installed) :expected (list :installed t)))
       (:apply
        (unless installed
          (unless (flatpak-available-p)
@@ -205,7 +206,8 @@ sudo without needing direct terminal access."
       (:check
        (let ((installed (and (toolbox-container-exists-p container)
                              (toolbox-package-installed-p container pkg))))
-         (report (if installed :unchanged :would-change) :target name)))
+         (report (if installed :unchanged :would-change)
+                 :target name :current (list :installed installed) :expected (list :installed t))))
       (:apply
        (create-toolbox-container container)
        (if (toolbox-package-installed-p container pkg)
@@ -249,7 +251,9 @@ expected to be provided by an external plugin."
       (:check
        (report (if (file-executable-p path)
                    :unchanged :would-change)
-               :target name))
+               :target name
+               :current (list :installed (file-executable-p path))
+               :expected (list :installed t)))
       (:apply
        (if (file-executable-p path)
            (report :unchanged :target name)
@@ -266,7 +270,8 @@ expected to be provided by an external plugin."
 (defun execute-pip-package (action name &key mode)
   (let ((installed (package-installed-p :pip name)))
     (case mode
-      (:check (report (if installed :unchanged :would-change) :target name))
+      (:check (report (if installed :unchanged :would-change)
+                      :target name :current (list :installed installed) :expected (list :installed t)))
       (:apply
        (unless installed
          (uiop:run-program (install-command :pip name) :output t :error-output t
@@ -281,7 +286,8 @@ expected to be provided by an external plugin."
 (defun execute-npm-package (action name &key mode)
   (let ((installed (package-installed-p :npm name)))
     (case mode
-      (:check (report (if installed :unchanged :would-change) :target name))
+      (:check (report (if installed :unchanged :would-change)
+                      :target name :current (list :installed installed) :expected (list :installed t)))
       (:apply
        (unless installed
          (uiop:run-program (install-command :npm name) :output t :error-output t
@@ -298,7 +304,8 @@ expected to be provided by an external plugin."
 (defun execute-system-package (action name &key mode)
   (let ((installed (package-installed-p :system name)))
     (case mode
-      (:check (report (if installed :unchanged :would-change) :target name))
+      (:check (report (if installed :unchanged :would-change)
+                      :target name :current (list :installed installed) :expected (list :installed t)))
       (:apply
        (unless installed
          (run-privileged (install-command :system name)))

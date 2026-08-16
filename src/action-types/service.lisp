@@ -41,9 +41,9 @@ registered -- that scope's mechanism plugin was not loaded."
          (needs-start (and want-running (not is-running)))
          (changed (or needs-enable needs-start)))
     (case mode
-      (:check (report (if changed :would-change :unchanged)
-                       :target target :current (list :enabled is-enabled :running is-running)
-                       :desired (list :enabled want-enabled :running want-running)))
+(:check (report (if changed :would-change :unchanged)
+                        :target target :current (list :enabled is-enabled :running is-running)
+                        :expected (list :enabled want-enabled :running want-running)))
       (:apply
        (when needs-enable (service-enable backend target))
        (when needs-start (service-start backend target))

@@ -31,7 +31,14 @@
          (intended (compute-config-lines current ensure remove-list))
          (changed (not (equal intended current))))
     (case mode
-      (:check (report (if changed :would-change :unchanged) :target target))
+      (:check
+       (let ((lines (if (zerop (length current))
+                        '()
+                        (uiop:split-string (string-right-trim '(#\Newline #\Return) current) :separator '(#\Newline)))))
+         (report (if changed :would-change :unchanged)
+                 :target target
+                 :added (remove-if (lambda (l) (member l lines :test #'string=)) ensure)
+                 :removed (remove-if (lambda (l) (not (member l lines :test #'string=))) remove-list))))
       (:apply
        (when changed (fs-write-file fs target intended))
        (report (if changed :changed :unchanged) :target target))

@@ -291,3 +291,51 @@ status of every action is computed exactly once per invocation."
       (setf (gethash (action-identity a) result)
             (execute-action a :mode :check)))
     result))
+
+;;; --- Apply preview & failure report -----------------------------------------
+
+(defun apply-preview-counts (ordered)
+  "Count ORDERED actions per summary group (see SUMMARY-GROUP), in canonical
+order, as an alist of (group . count). Every group appears, including zero
+counts, so the preview shape is stable."
+  (mapcar (lambda (g) (cons g (count-if (lambda (a) (eq (summary-group a) g)) ordered)))
+          (mapcar #'car *action-group-names*)))
+
+(defun render-apply-preview (ctx ordered)
+  "The pre-apply preview: a machine header, a grouped count line
+(\"8 action(s) · Packages: 2 · Files: 5 · Services: 1 · Other: 0\"), a
+blank line, and the confirmation prompt \"Continue? [y/N]\" as its final
+line. Pure: returns lines; the caller prints them and reads the answer."
+  (append
+   (list (machine-header :facts (report-context-facts ctx))
+         ""
+         (summary-line
+          (cons (format nil "~d action(s)" (length ordered))
+                (loop for (g . n) in (apply-preview-counts ordered)
+                      collect (format nil "~a: ~d" (action-group-name g) n))))
+         "")
+   (list "Continue? [y/N]")))
+
+(defun render-apply-failed (ctx)
+  "The partial-failure summary for an aborted apply run: machine header,
+counts of completed/failed actions, \"Remaining: N not attempted\", the
+warning that the system is only partially configured, and the Next: footer.
+Reads the run's results from the plan's :results table (which shares
+*ACTION-RESULTS*), so it reflects exactly what executed so far."
+  (let* ((plan (report-context-plan ctx))
+         (ordered (plan-actions plan))
+         (results (plan-results plan))
+         (total (length ordered))
+         (done (hash-table-count results))
+         (failed (loop for v being the hash-value of results
+                       count (eq (result-status v) :failed)))
+         (completed (- done failed)))
+    (append
+     (list (machine-header :facts (report-context-facts ctx))
+           ""
+           (summary-line (list (format nil "~d completed" completed)
+                               (format nil "~d failed" failed)))
+           (format nil "Remaining: ~d not attempted" (- total done))
+           ""
+           "System state is partially configured.")
+     (next-steps '("check" "apply")))))

@@ -15,7 +15,11 @@
     (case mode
       (:check
        ;; Do not resolve the secret source just to check -- report presence only.
-       (report (if (fs-exists-p fs target) :unchanged :would-change) :target target))
+       (let ((present (fs-exists-p fs target)))
+         (report (if present :unchanged :would-change)
+                 :target target
+                 :current (list :present present)
+                 :expected (list :present t))))
       (:apply
        (let* ((value (if (or (getf action :template) (getf action :renderer))
                           (render-template action)

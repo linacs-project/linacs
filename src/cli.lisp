@@ -541,24 +541,94 @@ column (underlying error for failures, duration otherwise)."
               (if (plusp skipped) skipped 0))
       (format t "[v] applied  [!] unchanged  [x] failed  [~~] skipped~%"))))
 
+(defun apply-confirmation-answer (line)
+  "T if LINE answers \"yes\" (a y/Y leading character after trimming), NIL
+otherwise -- the \"default N\" of the pre-apply prompt. NIL or empty LINE
+means N (abort)."
+  (let ((answer (string-trim " " (or line ""))))
+    (and (plusp (length answer))
+         (member (char-downcase (char answer 0)) '(#\y)))))
+
+(defun confirm-apply-preview (ctx ordered)
+  "Print the pre-apply preview (RENDER-APPLY-PREVIEW) and ask
+\"Continue? [y/N]\". Returns T to proceed, NIL to abort.
+Non-interactive (no terminal, e.g. CI) skips the prompt and proceeds,
+keeping scripted runs prompt-free. A blank or non-y answer defaults to N
+(abort, exit 0)."
+  (format t "~{~a~%~}" (render-apply-preview ctx ordered))
+  (if (interactive-stream-p *query-io*)
+      (progn
+        (format t "> ")
+        (force-output)
+        (apply-confirmation-answer (read-line *query-io* nil nil)))
+      t))
+
+(defun apply-run-failed-p (plan)
+  "T if any result in PLAN's results table is :failed. Used to force a
+non-zero exit even when an apply run completes (e.g. after --continue or
+a failure recovered via SKIP), instead of silently reporting success."
+  (loop for v being the hash-value of (plan-results plan)
+        thereis (eq (result-status v) :failed)))
+
 (defun cmd-apply (opts)
   (bootstrap opts)
   (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
   (let* ((verbose (>= (cli-opts-verbosity opts) 2))
-         (*capture-subprocess-output* (and (not verbose) (not (cli-opts-dry-run opts))))
-         (*progress-reporter* (and (not (cli-opts-dry-run opts))
-                                   #'apply-progress-reporter))
+         (dry-run (cli-opts-dry-run opts))
+         (*capture-subprocess-output* (and (not verbose) (not dry-run)))
+         (*progress-reporter* (and (not dry-run) #'apply-progress-reporter))
          (*captured-subprocess-lines* nil))
-    (multiple-value-bind (ordered home plan) (run-pipeline :profile (cli-opts-profile opts)
-                                                           :project-root (cli-opts-root opts)
-                                                           :provider-overrides (cli-opts-provider-overrides opts)
-                                                           :platform (cli-opts-platform opts)
-                                                           :execute-mode (if (cli-opts-dry-run opts) :check :apply)
-                                                           :continue-on-error (cli-opts-continue-on-error opts))
-      (declare (ignore ordered home))
-      (unless (cli-opts-dry-run opts)
-        (when plan (print-apply-summary plan :verbose verbose)))
-      (sudo-reset-after-run opts))))
+    (multiple-value-bind (ordered home plan)
+        (run-pipeline :profile (cli-opts-profile opts)
+                      :project-root (cli-opts-root opts)
+                      :provider-overrides (cli-opts-provider-overrides opts)
+                      :platform (cli-opts-platform opts)
+                      :execute-mode :plan-only)
+      (declare (ignore ordered))
+      (let ((ctx (make-report-context :plan plan :facts *facts* :home home :opts opts)))
+        (when dry-run
+          ;; -n/--dry-run shows the preview as the plan, without prompting.
+          (format t "~{~a~%~}" (render-apply-preview ctx (plan-actions plan)))
+          (sudo-reset-after-run opts)
+          (return-from cmd-apply))
+        (unless (confirm-apply-preview ctx (plan-actions plan))
+          (format t "Aborted -- no changes made.~%")
+          (sudo-reset-after-run opts)
+          (uiop:quit 0))
+        (let ((*linacs-abort-function*
+                (lambda ()
+                  ;; The synthetic [ABORT] menu entry: report what actually
+                  ;; ran before the run stops, then exit non-zero.
+                  (format t "~{~a~%~}" (render-apply-failed ctx))
+                  (uiop:quit 1))))
+          (handler-bind
+              ((linacs-error
+                 (lambda (e)
+                   (declare (ignore e))
+                   ;; Non-interactive (or a failure with no restart menu):
+                   ;; render the partial summary, then let the condition
+                   ;; propagate so WITH-CLI-ERROR-REPORT prints it and exits
+                   ;; 1. Interactive failures are handled by the restart menu
+                   ;; first (execute-plan's handler is innermost); only its
+                   ;; synthetic [ABORT] path reaches here via the abort
+                   ;; function above.
+                   (unless (and *restart-menu-p* (compute-linacs-restarts))
+                     (format t "~{~a~%~}" (render-apply-failed ctx)))
+                   nil)))
+            (multiple-value-bind (ordered2 home2 plan2)
+                (run-pipeline :profile (cli-opts-profile opts)
+                              :project-root (cli-opts-root opts)
+                              :provider-overrides (cli-opts-provider-overrides opts)
+                              :platform (cli-opts-platform opts)
+                              :execute-mode :apply
+                              :continue-on-error (cli-opts-continue-on-error opts))
+              (declare (ignore ordered2 home2))
+              (when plan2 (print-apply-summary plan2 :verbose verbose))
+              (when (apply-run-failed-p plan2)
+                (linacs.log:error* "Some actions failed; exiting non-zero.")
+                (sudo-reset-after-run opts)
+                (uiop:quit 1))
+              (sudo-reset-after-run opts))))))))
 
 (defun cmd-diff (opts)
   "Resolve the plan and check each action against current system state.

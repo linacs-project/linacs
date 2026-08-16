@@ -28,7 +28,10 @@
          (needs-write (not (equal intended current)))
          (enabled (and backend (service-enabled-p backend unit))))
     (case mode
-      (:check (report (if (or needs-write (not enabled)) :would-change :unchanged) :target name))
+      (:check (report (if (or needs-write (not enabled)) :would-change :unchanged)
+                       :target name
+                       :current (list :enabled enabled)
+                       :expected (list :enabled t)))
       (:apply
        (when needs-write (write-file-string path intended))
        ;; The enable is best-effort: the unit file write is the source of

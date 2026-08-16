@@ -32,7 +32,15 @@
          (intended (render-env-file merged))
          (changed (not (equal intended current))))
     (case mode
-      (:check (report (if changed :would-change :unchanged) :target target))
+      (:check
+       (let* ((parsed (parse-env-file current))
+              (added (loop for (k . v) in set-alist
+                           unless (equal (cdr (assoc k parsed :test #'equal)) v)
+                             collect (cons k v))))
+         (report (if changed :would-change :unchanged)
+                 :target target
+                 :added added
+                 :removed nil)))
       (:apply (when changed (fs-write-file fs target intended))
               (report (if changed :changed :unchanged) :target target))
       (:remove

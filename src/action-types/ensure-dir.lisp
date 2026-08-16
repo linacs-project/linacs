@@ -16,7 +16,10 @@
          (mode-needed (and exists (getf action :mode)
                            (/= (or (fs-file-mode fs dir) -1) (getf action :mode)))))
     (case mode
-      (:check (report (if (or (not exists) mode-needed) :would-change :unchanged) :target target))
+      (:check (report (if (or (not exists) mode-needed) :would-change :unchanged)
+                      :target target
+                      :current (list :exists exists :mode (and exists (fs-file-mode fs dir)))
+                      :expected (list :exists t :mode (getf action :mode))))
       (:apply
        (unless exists (fs-make-directory fs dir))
        (when (or (not exists) mode-needed) (fs-apply-ownership fs dir action))

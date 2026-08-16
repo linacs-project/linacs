@@ -15,7 +15,8 @@
          (current (fs-read-link fs target))
          (changed (not (equal current to))))
     (case mode
-      (:check (report (if changed :would-change :unchanged) :target target))
+      (:check (report (if changed :would-change :unchanged)
+                      :target target :current current :expected to))
       (:apply
        (when changed (fs-symlink fs to target))
        (report (if changed :changed :unchanged) :target target))

@@ -42,7 +42,8 @@
               (current (fs-read-file fs to))
               (changed (not (equal intended current))))
          (case mode
-           (:check (report (if changed :would-change :unchanged) :target to))
+           (:check (report (if changed :would-change :unchanged)
+                           :target to :current current :expected intended))
            (:apply
             (when changed
               (fs-write-file fs to intended)

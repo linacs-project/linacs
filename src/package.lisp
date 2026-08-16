@@ -346,6 +346,8 @@
     #:blank-line #:rule-line #:summary-line #:next-steps
     #:render-action-line #:status-glyph
     #:collect-check-statuses
+    #:apply-preview-counts #:render-apply-preview #:render-apply-failed
+    #:confirm-apply-preview #:apply-run-failed-p #:apply-confirmation-answer
     #:*action-conflicts*))
 
 (defpackage :linacs.api

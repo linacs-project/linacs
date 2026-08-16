@@ -59,7 +59,17 @@ preserving order, as an alist mapping section-name -> alist of key/value."
          (intended (render-ini (apply-ini-ops sections section set-alist unset-list)))
          (changed (not (equal (string-trim '(#\Newline) intended) (string-trim '(#\Newline) current)))))
     (case mode
-      (:check (report (if changed :would-change :unchanged) :target target))
+      (:check
+       (let* ((sec (assoc section (parse-ini current) :test #'equal))
+              (kvs (cdr sec))
+              (added (loop for (k . v) in set-alist
+                           unless (equal (cdr (assoc k kvs :test #'equal)) v)
+                             collect (cons k v)))
+              (removed (remove-if (lambda (k) (not (assoc k kvs :test #'equal))) unset-list)))
+         (report (if changed :would-change :unchanged)
+                 :target target
+                 :added added
+                 :removed removed)))
       (:apply (when changed (fs-write-file fs target intended))
               (report (if changed :changed :unchanged) :target target))
       (:remove
