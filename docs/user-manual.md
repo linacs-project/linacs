@@ -220,21 +220,27 @@ linacs plan -C ~/my-home
 You should see something like:
 
 ```
-Resolved plan for MY-HOME (traits: (PRUNE-EXPLICITLY-DISABLED)):
+thinkpad · Fedora 42 · KDE Plasma · Wayland
 
-  STATUS  TYPE       TARGET      VIA
-  ------  ---------  ----------  ------
-  [+]     package    bash        system
-  [+]     copy-file  ~/.bashrc
+Plan for MY-HOME: 2 action(s)
 
-2 action(s): 2 to apply, 0 already present
+Packages
+  [!] Install bash via dnf — shell via bash
+
+Files
+  [+] Configure ~/.bashrc — shell via bash
+
+2 action(s) · 1 to apply · 1 already present
 [+] apply  [!] already present  [x] remove  [-] disabled
+
+Next:
+  linacs apply
 ```
 
 (On a color terminal the glyphs are tinted — `[+]` yellow, `[!]` yellow,
-`[x]` red. The columns and counts are what matter here.) Nothing has
-touched your filesystem yet — `plan` always runs in check mode. When
-you're happy:
+`[x]` red. The machine header on the first line is your hostname · distro ·
+desktop · display server. Nothing has touched your filesystem yet — `plan`
+always runs in check mode. When you're happy:
 
 ```sh
 linacs apply -C ~/my-home

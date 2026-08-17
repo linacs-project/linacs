@@ -227,8 +227,17 @@ to the same cons cells (e.g. the ordered action list in CMD-PLAN)."
   (dolist (action actions)
     (when (and (eq (action-type action) :package)
                (not (getf action :via)))
-      (let ((via (resolve-package-via action)))
-        (nconc action (list :via via))))))
+      (let* ((old-id (action-identity action))
+             (via (resolve-package-via action)))
+        (nconc action (list :via via))
+        ;; Injecting :via changes the action's identity for package actions
+        ;; (the package identity includes the via). Migrate any provenance
+        ;; registered under the pre-via identity to the new one, so reason
+        ;; lines and conflict reports keep their source after resolution.
+        (let ((new-id (action-identity action)))
+          (unless (equal old-id new-id)
+            (let ((prov (action-provenance old-id)))
+              (when prov (register-provenance new-id prov)))))))))
 
 (defun repository-spec-plist (spec)
   "Normalize the value CATALOG-LOOKUP returns for a :repositories entry

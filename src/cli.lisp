@@ -145,15 +145,17 @@ never notices any of this; a persistent one does."
         (concatenate 'string str (make-string extra :initial-element #\Space))
         str)))
 
-(defun print-table (headers rows)
-  "Print a simple aligned table (a list of HEADERS strings, then each row
-in ROWS as a list of strings, one per column) with a dashed rule under
-the header. Empty ROWS still prints the header, so the shape of the
-report is consistent whether or not anything is registered."
+(defun table-lines (headers rows &key (max-width *print-table-max-width*))
+  "The aligned-table output (a list of HEADERS strings, then each row in
+ROWS as a list of strings, one per column) as a LIST OF LINES -- header
+row, dashed rule, then one line per row -- with a dashed rule under the
+header. Empty ROWS still includes the header, so the shape of the report
+is consistent whether or not anything is registered. Pure: returns the
+lines; PRINT-TABLE prints them and the Phase 3 renderers embed them."
   (flet ((truncate-cell (s)
            (let ((str (or s "")))
-             (if (> (length str) *print-table-max-width*)
-                 (concatenate 'string (subseq str 0 (- *print-table-max-width* 3)) "...")
+             (if (> (length str) max-width)
+                 (concatenate 'string (subseq str 0 (- max-width 3)) "...")
                  str))))
     (let* ((ncols (length headers))
            (truncated-rows (mapcar (lambda (r) (mapcar #'truncate-cell r)) rows))
@@ -166,9 +168,16 @@ report is consistent whether or not anything is registered."
                (format nil "  ~{~a~^  ~}"
                        (loop for i below ncols
                              collect (pad-to-width (or (nth i cells) "") (nth i widths))))))
-        (format t "~a~%" (row-string truncated-headers))
-        (format t "~a~%" (row-string (mapcar (lambda (w) (make-string w :initial-element #\-)) widths)))
-        (dolist (r truncated-rows) (format t "~a~%" (row-string r)))))))
+        (append (list (row-string truncated-headers)
+                      (row-string (mapcar (lambda (w) (make-string w :initial-element #\-)) widths)))
+                (mapcar #'row-string truncated-rows))))))
+
+(defun print-table (headers rows)
+  "Print a simple aligned table (a list of HEADERS strings, then each row
+in ROWS as a list of strings, one per column) with a dashed rule under
+the header. Empty ROWS still prints the header, so the shape of the
+report is consistent whether or not anything is registered."
+  (format t "~{~a~%~}" (table-lines headers rows)))
 
 (defun action-status-glyph (action prune-p)
   "Return the status glyph for ACTION based on its :disabled flag and the
@@ -195,11 +204,19 @@ PRUNE-P trait: [x] disabled+prune, [-] disabled only, [+] would-change,
 
 (defun package-via-label (action)
   "Return a short display string for the :via method of a :package action.
-For non-package actions, return an empty string."
+:system is shown as the concrete package manager resolved from the
+:package-manager fact (e.g. \"dnf\"); other vias show their keyword name
+(e.g. \"pip\"). For non-package actions, return an empty string."
   (if (eq (action-type action) :package)
       (let ((via (or (getf action :via)
                      (resolve-package-via action))))
-        (format nil ":~(~a~)" via))
+        (format nil "~(~a~)"
+                (if (eq via :system)
+                    (let ((pm (fact :package-manager)))
+                      (if (and pm (not (eq pm :unknown)))
+                          (symbol-name pm)
+                          "system"))
+                    (symbol-name via))))
       ""))
 
 (defun plan-summary-legend ()
@@ -288,52 +305,10 @@ and in sudo's own credential cache via sudo -S."
                                                          :platform (cli-opts-platform opts)
                                                          :execute-mode :plan-only)
     (declare (ignore ordered))
-    (let* ((actions (plan-actions plan)))
+    (let ((actions (plan-actions plan)))
       (when actions (preflight-notice actions))
-      (let* ((prune-p (member :prune-explicitly-disabled (home-definition-traits home)))
-             (verbose (>= (cli-opts-verbosity opts) 2))
-             (feature-filter (cli-opts-feature opts))
-             (feature-set (when feature-filter
-                            (collect-feature-subtree feature-filter)))
-             (filtered (if feature-set
-                           (remove-if-not
-                            (lambda (a)
-                              (let ((prov (action-provenance (action-identity a))))
-                                (and prov
-                                     (member (provenance-feature prov) feature-set))))
-                            actions)
-                           actions))
-             (annotated
-              (loop for a in filtered
-                    for id = (action-identity a)
-                    for glyph = (action-status-glyph a prune-p)
-                    for via = (package-via-label a)
-                    collect (list glyph
-                                  (string-downcase (string (action-type a)))
-                                  (princ-to-string (action-target a))
-                                  via
-                                  (if verbose (provenance-string id) "")))))
-        (format t "Resolved plan for ~a (traits: ~a):~%~%" (home-definition-name home) (or (home-definition-traits home) "none"))
-        (when feature-filter
-          (format t "Feature: ~a~%~a~%" (string-downcase (string feature-filter))
-                  (feature-tree-string feature-filter)))
-        (let ((display (mapcar (lambda (row)
-                                 (cons (colorize-glyph (first row)) (rest row)))
-                               annotated)))
-          (if verbose
-              (print-table '("STATUS" "TYPE" "TARGET" "VIA" "PROVENANCE") display)
-              (print-table '("STATUS" "TYPE" "TARGET" "VIA")
-                           (mapcar (lambda (r) (subseq r 0 4)) display))))
-        (let* ((to-apply (count "[+]" annotated :key #'first :test #'string=))
-               (present (count "[!]" annotated :key #'first :test #'string=))
-               (remove (count "[x]" annotated :key #'first :test #'string=))
-               (skipped (count "[-]" annotated :key #'first :test #'string=)))
-          (format t "~%~d action(s)~@[ for ~a~]: ~d to apply, ~d already present~@[, ~d to remove~]~@[, ~d disabled~]~%"
-                  (length filtered) (when feature-filter (string-downcase (string feature-filter)))
-                  to-apply present
-                  (if (plusp remove) remove 0)
-                  (if (plusp skipped) skipped 0))
-          (format t "~a~%" (plan-summary-legend)))))
+      (format t "~{~a~%~}" (render-plan (make-report-context :plan plan :facts *facts*
+                                                             :home home :opts opts))))
     (sudo-reset-after-run opts)))
 
 
@@ -341,29 +316,144 @@ and in sudo's own credential cache via sudo -S."
 (defun cmd-check (opts)
   (bootstrap opts)
   (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
-  (run-pipeline :profile (cli-opts-profile opts) :project-root (cli-opts-root opts)
-                :provider-overrides (cli-opts-provider-overrides opts)
-                :platform (cli-opts-platform opts)
-                :execute-mode :plan-only)
-  (format t "Configuration resolves cleanly.~%")
-  (sudo-reset-after-run opts))
+  (multiple-value-bind (ordered home plan)
+      (run-pipeline :profile (cli-opts-profile opts) :project-root (cli-opts-root opts)
+                    :provider-overrides (cli-opts-provider-overrides opts)
+                    :platform (cli-opts-platform opts)
+                    :execute-mode :plan-only)
+    (declare (ignore ordered))
+    (format t "~{~a~%~}" (render-check (make-report-context :plan plan :facts *facts*
+                                                            :home home :opts opts)
+                                       :profile (cli-opts-profile opts)))
+    (sudo-reset-after-run opts)))
+
+;;; --- validate: structural option checking ---------------------------------
+;;;
+;;; cmd-validate reads every conventional file plus home.lisp for syntax.
+;;; Phase 3 adds a structural pass: the core home-level DSL forms are checked
+;;; against a signature table (name -> allowed option keywords), so a typo'd
+;;; keyword like (file "~/.x" :form "x") is caught before check/apply. The
+;;; signature table is derived from the action plist keys each executor
+;;; actually consumes (see action-types/*.lisp) plus the documented generic
+;;; keys (:disabled :force :depends-on). Plugin-defined forms and definition
+;;; forms (define-feature, defun, ...) are outside the table and pass silently
+;;; -- validate never needs discovery, so it cannot know their options.
+
+(defparameter *dsl-form-signatures*
+  '(("DEFINE-HOME" . (:traits :asset-root))
+    ("USE-FEATURE" . (:via :custom :depends-on))
+    ("FILE" . (:from :to :mode :owner :group :template :renderer :secrets
+                     :disabled :force :depends-on))
+    ("DIRECTORY" . (:mode :owner :group :disabled :force :depends-on))
+    ("SYMLINK" . (:to :disabled :force :depends-on))
+    ("SECRET" . (:from :path :message :mode :owner :group
+                       :disabled :force :depends-on))
+    ("ENV-VAR" . (:value :file :disabled :force :depends-on))
+    ("CONFIG-LINES" . (:ensure :remove :disabled :force :depends-on))
+    ("CONFIG-INI" . (:section :set :unset :disabled :force :depends-on))
+    ("CONFIG-ENV" . (:set :disabled :force :depends-on))
+    ("PACKAGE" . (:via :disabled :force :depends-on))
+    ("STOW" . (:from :to :force :disabled :depends-on))
+    ("USER" . (:uid :gid :shell :home :system :locked :create-home :remove-home
+               :disabled :force :depends-on))
+    ("GROUP" . (:gid :disabled :force :depends-on))
+    ("AUTHORIZED-KEY" . (:user :key :comment :disabled :force :depends-on))
+    ("PERMISSIONS" . (:mode :owner :group :recursive :disabled :force :depends-on))
+    ("MOUNT" . (:device :fstype :options :dump :pass :disabled :force :depends-on))
+    ("SYSCTL" . (:value :file :disabled :force :depends-on))
+    ("KERNEL-MODULE" . (:state :options :disabled :force :depends-on))
+    ("HOSTNAME" . (:disabled :force :depends-on))
+    ("LOCALE" . (:timezone :lang :lc-all :disabled :force :depends-on))
+    ("FIREWALL" . (:rules :allow :protocol :disabled :force :depends-on))
+    ("CRON" . (:schedule :command :user :disabled :force :depends-on))
+    ("COMMAND" . (:run :args :cwd :env :creates :only-if :unless :sudo :remove-run
+                       :disabled :force :depends-on))
+    ("CLONE" . (:url :to :branch :depth :disabled :force :depends-on))
+    ("REPOSITORY" . (:method :enabled :disabled :force :depends-on)))
+  "Signature table for `linacs validate`'s structural pass: core home-level
+DSL form name (uppercase string) -> allowed option keywords. Keys are the
+action plist keywords the corresponding executor consumes, plus the generic
+:disabled/:force/:depends-on keys every action accepts. Forms not listed here
+are not structurally checked.")
+
+(defun define-home-option-problems (form)
+  "Unknown-option problems for a (define-home <name> <opts>... <body>) FORM:
+the leading keyword/value pairs directly after the name must be :traits or
+:asset-root."
+  (loop for rest on (cddr form)
+        while (keywordp (car rest))
+        for opt = (car rest)
+        unless (member opt '(:traits :asset-root))
+          collect (format nil "define-home: unknown option :~(~a~)"
+                          (string opt))))
+
+(defun unknown-option-problems (name form allowed)
+  "Problems for FORM (an action-macro usage) whose option keywords are not in
+ALLOWED. Only the keyword/value tail is inspected; the leading target is
+skipped."
+  (loop for rest on (cddr form) by #'cddr
+        for opt = (car rest)
+        when (and (keywordp opt) (not (member opt allowed)))
+          collect (format nil "~(~a~): unknown option :~(~a~)" name (string opt))))
+
+(defun structural-form-problems (form)
+  "A list of human-readable problem strings for FORM (a read top-level
+s-expression), or NIL when it is structurally fine. Checks the core home-level
+DSL surface: DEFINE-HOME shape and leading options (recursing into its body),
+USE-FEATURE shape, and the action-macro forms' option keywords against
+*DSL-FORM-SIGNATURES*. Unrecognized forms pass silently -- they may be plugin
+forms, definition forms (define-feature, defun), or nested Lisp."
+  (when (and (consp form) (symbolp (car form)))
+    (let* ((name (symbol-name (car form)))
+           (sig (cdr (assoc name *dsl-form-signatures* :test #'string=))))
+      (cond
+        ((string= name "DEFINE-HOME")
+         (append
+          (when (null (second form))
+            (list "define-home requires a home name"))
+          (define-home-option-problems form)
+          (loop for body-form in (cddr form)
+                append (structural-form-problems body-form))))
+        ((string= name "USE-FEATURE")
+         (when (null (second form))
+           (list "use-feature requires a feature keyword")))
+        ((string= name "DIRECT-ACTION")
+         nil) ; the escape hatch takes literal action plists -- no signature
+        (sig
+         (append
+          (when (and (rest form) (keywordp (second form)))
+            (list (format nil "~(~a~) requires a target" name)))
+          (unknown-option-problems name form sig)))
+        (t nil)))))
 
 (defun cmd-validate (opts)
   ;; Syntax-only: try to read every conventional file plus home.lisp without
-  ;; resolving features/providers/facts.
-  (let ((root (uiop:ensure-directory-pathname (cli-opts-root opts))) (ok t))
-    (dolist (dir-name (cons "" *conventional-directories*))
-      (let ((dir (if (string= dir-name "") root
-                      (merge-pathnames (make-pathname :directory (list :relative dir-name)) root))))
-        (when (uiop:directory-exists-p dir)
-          (dolist (f (uiop:directory-files dir "*.lisp"))
-            (handler-case (with-open-file (s f) (loop for form = (read s nil :eof) until (eq form :eof)))
-              (error (e) (setf ok nil) (linacs.log:error* "Syntax error in ~a: ~a" f e)))))))
-    (let ((home-file (merge-pathnames "home.lisp" root)))
-      (when (probe-file home-file)
-        (handler-case (with-open-file (s home-file) (loop for form = (read s nil :eof) until (eq form :eof)))
-          (error (e) (setf ok nil) (linacs.log:error* "Syntax error in home.lisp: ~a" e)))))
-    (if ok (format t "Syntax OK.~%") (uiop:quit 1))))
+  ;; resolving features/providers/facts, then structurally check the core
+  ;; home-level forms. Exit 1 on any syntax or structural problem.
+  (let ((root (uiop:ensure-directory-pathname (cli-opts-root opts)))
+        (problems '()))
+    (flet ((scan-file (f label)
+             (handler-case
+                 (with-open-file (s f)
+                   (loop for form = (read s nil :eof) until (eq form :eof)
+                         do (setf problems
+                                  (append (structural-form-problems form) problems))))
+               (error (e)
+                 (push (format nil "Syntax error in ~a: ~a" label e) problems)))))
+      (dolist (dir-name (cons "" *conventional-directories*))
+        (let ((dir (if (string= dir-name "") root
+                        (merge-pathnames (make-pathname :directory (list :relative dir-name)) root))))
+          (when (uiop:directory-exists-p dir)
+            (dolist (f (uiop:directory-files dir "*.lisp"))
+              (unless (and (string= dir-name "")
+                           (string= (pathname-name f) "home"))
+                (scan-file f (format nil "~a/" (if (string= dir-name "") "<root>" dir-name))))))))
+      (let ((home-file (merge-pathnames "home.lisp" root)))
+        (when (probe-file home-file)
+          (scan-file home-file "home.lisp"))))
+    (let ((ctx (make-report-context :opts opts)))
+      (format t "~{~a~%~}" (render-validate ctx :problems (nreverse problems))))
+    (when problems (uiop:quit 1))))
 
 ;;; --- Background thread abstraction (spinner) ----------------------------
 ;;;
@@ -622,8 +712,14 @@ a failure recovered via SKIP), instead of silently reporting success."
                               :platform (cli-opts-platform opts)
                               :execute-mode :apply
                               :continue-on-error (cli-opts-continue-on-error opts))
-              (declare (ignore ordered2 home2))
-              (when plan2 (print-apply-summary plan2 :verbose verbose))
+              (declare (ignore ordered2))
+              (when plan2
+                (let ((ctx2 (make-report-context :plan plan2 :facts *facts*
+                                                 :home home2 :opts opts)))
+                  (when verbose
+                    (format t "~{~a~%~}" (render-apply-detail ctx2))
+                    (terpri))
+                  (format t "~{~a~%~}" (render-apply ctx2))))
               (when (apply-run-failed-p plan2)
                 (linacs.log:error* "Some actions failed; exiting non-zero.")
                 (sudo-reset-after-run opts)
@@ -633,48 +729,21 @@ a failure recovered via SKIP), instead of silently reporting success."
 (defun cmd-diff (opts)
   "Resolve the plan and check each action against current system state.
 Uses :plan-only mode (not :check) because run-pipeline's :check mode
-dispatches executors inline but doesn't capture individual results;
-we call execute-action separately to collect :would-change statuses."
+dispatches executors inline but doesn't capture individual results; the
+renderer calls execute-action :check separately to collect semantic statuses."
   (bootstrap opts)
   (when (cli-opts-sudo-password-stdin opts) (apply-sudo-password-stdin))
-  (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
-                                                       :project-root (cli-opts-root opts)
-                                                       :provider-overrides (cli-opts-provider-overrides opts)
-                                                       :platform (cli-opts-platform opts)
-                                                       :execute-mode :plan-only)
-    (when ordered (preflight-notice ordered))
-    (let* ((verbose (>= (cli-opts-verbosity opts) 2))
-           (headers (if verbose '("TYPE" "TARGET" "CURRENT" "EXPECTED" "PROVENANCE") '("TYPE" "TARGET")))
-           (changes (if verbose
-                        (loop for a in ordered
-                              for result = (execute-action a :mode :check)
-                              when (eq (getf result :status) :would-change)
-                                collect (let* ((id (action-identity a))
-                                               (prov (action-provenance id))
-                                               (prov-str (if prov
-(let ((feat (provenance-feature prov))
-                                    (prov-name (provenance-provider prov))
-                                    (src (provenance-source prov)))
-                                                               (or (and feat (format nil "~a / ~a" feat prov-name))
-                                                                   (and src (format nil "user:~a" src))
-                                                                   ""))
-                                                             "")))
-                                          (list (string-downcase (string (action-type a)))
-                                                (princ-to-string (action-target a))
-                                                (or (getf result :current) "?")
-                                                (or (getf result :expected) "?")
-                                                prov-str)))
-                        (loop for a in ordered
-                              for result = (execute-action a :mode :check)
-                              when (eq (getf result :status) :would-change)
-                                collect (list (string-downcase (string (action-type a)))
-                                              (princ-to-string (action-target a)))))))
-      (if changes
-          (progn
-            (format t "~a differs from the resolved plan for ~a:~%~%" (or (cli-opts-root opts) ".") (home-definition-name home))
-            (print-table headers changes)
-            (format t "~%~d action(s) would change.~%" (length changes)))
-          (format t "No differences -- the system already matches the resolved plan for ~a.~%" (home-definition-name home))))))
+  (multiple-value-bind (ordered home plan) (run-pipeline :profile (cli-opts-profile opts)
+                                                         :project-root (cli-opts-root opts)
+                                                         :provider-overrides (cli-opts-provider-overrides opts)
+                                                         :platform (cli-opts-platform opts)
+                                                         :execute-mode :plan-only)
+    (declare (ignore ordered))
+    (let ((actions (plan-actions plan)))
+      (when actions (preflight-notice actions))
+      (format t "~{~a~%~}" (render-diff (make-report-context :plan plan :facts *facts*
+                                                             :home home :opts opts))))
+    (sudo-reset-after-run opts)))
 
 (defun cli-provider-override (opts feature-name)
   "The provider the CLI's --provider T=P flag forces for FEATURE-NAME, or
@@ -711,77 +780,22 @@ editor
 
 (defun cmd-explain (opts)
   (bootstrap opts)
-  (multiple-value-bind (ordered home) (run-pipeline :profile (cli-opts-profile opts)
-                                                    :project-root (cli-opts-root opts)
-                                                    :provider-overrides (cli-opts-provider-overrides opts)
-                                                    :platform (cli-opts-platform opts)
-                                                    :execute-mode :plan-only)
-    (format t "Home: ~a~%Traits: ~a~%~%Features used:~%" (home-definition-name home) (or (home-definition-traits home) "none"))
-    (print-table '("FEATURE" "PROVIDER USED" "DESCRIPTION" "COMPOSED OF")
-                 (mapcar (lambda (r)
-                           (let* ((fname (getf r :feature))
-                                  (feature (feature-by-name fname)))
-                              (multiple-value-bind (fn chosen-name) (select-provider fname (or (cli-provider-override opts fname) (getf r :via)))
-                               (declare (ignore fn))
-                               (list (string-downcase (string fname))
-                                     (if chosen-name (string-downcase (string chosen-name)) "(skipped)")
-                                     (or (feature-description feature) "")
-                                     (composed-of-summary feature)))))
-                         (home-definition-use-features home)))
-    (format t "~%Action order:~%")
-    (let* ((prune-p (member :prune-explicitly-disabled (home-definition-traits home)))
-           (verbose (>= (cli-opts-verbosity opts) 2)))
-      (if verbose
-          (let* ((rows (loop for a in ordered for i from 1
-                             for glyph = (action-status-glyph a prune-p)
-                             for id = (action-identity a)
-                             for via = (package-via-label a)
-for facts-str = (let ((prov (action-provenance id)))
-                                                (and prov (provenance-facts-snapshot prov)
-                                                     (format nil "~{~a~^, ~}" (provenance-facts-snapshot prov))))
-                             collect (list (princ-to-string i) glyph
-                                           (string-downcase (string (action-type a)))
-                                           (princ-to-string (action-target a))
-                                           via
-                                           (provenance-string id)
-                                           (or facts-str ""))))
-                 (display (mapcar (lambda (row)
-                                    (destructuring-bind (num glyph &rest rest) row
-                                      (list* num (colorize-glyph glyph) rest)))
-                                  rows)))
-            (print-table '("#" "STATUS" "TYPE" "TARGET" "VIA" "PROVENANCE" "FACTS INVOLVED")
-                         display))
-          (let* ((rows (loop for a in ordered for i from 1
-                             for glyph = (action-status-glyph a prune-p)
-                             for via = (package-via-label a)
-                             collect (list (princ-to-string i) glyph
-                                           (string-downcase (string (action-type a)))
-                                           (princ-to-string (action-target a))
-                                           via)))
-                 (display (mapcar (lambda (row)
-                                    (destructuring-bind (num glyph &rest rest) row
-                                      (list* num (colorize-glyph glyph) rest)))
-                                  rows)))
-            (print-table '("#" "STATUS" "TYPE" "TARGET" "VIA")
-                         display)))
-      (format t "~%~d action(s).~%~a~%" (length ordered) (plan-summary-legend)))))
+  (multiple-value-bind (ordered home plan) (run-pipeline :profile (cli-opts-profile opts)
+                                                         :project-root (cli-opts-root opts)
+                                                         :provider-overrides (cli-opts-provider-overrides opts)
+                                                         :platform (cli-opts-platform opts)
+                                                         :execute-mode :plan-only)
+    (declare (ignore ordered))
+    (format t "~{~a~%~}" (render-explain (make-report-context :plan plan :facts *facts*
+                                                              :home home :opts opts)))
+    (sudo-reset-after-run opts)))
 
 (defun cmd-graph (opts)
   (bootstrap opts)
   (probe-all-facts) (apply-profile (cli-opts-profile opts))
   (apply-platform-override (cli-opts-platform opts))
   (let ((home (run-current-home-thunk)))
-    (if (home-definition-use-features home)
-        (dolist (r (home-definition-use-features home))
-          (let* ((fname (getf r :feature))
-                 (feature (feature-by-name fname)))
-            (format t "~a~@[ -- ~a~]~%" (string-downcase (string fname)) (feature-description feature))
-            (dolist (dep (feature-requires feature))
-              (format t "  requires ~a~%" (string-downcase (string dep))))
-            (let ((composed (feature-composed-of feature)))
-              (when composed
-                (format t "  composed of: ~{~(~a~)~^, ~}~%" composed)))))
-        (format t "(no use-feature forms in this home)~%"))))
+    (format t "~{~a~%~}" (render-graph (make-report-context :facts *facts* :home home :opts opts)))))
 
 (defun cmd-export (opts)
   (bootstrap opts)
@@ -826,133 +840,18 @@ for facts-str = (let ((prov (action-provenance id)))
 
 (defun cmd-list (opts)
   (bootstrap opts)
-  (format t "Features:~%")
-  (let ((rows (loop for k being the hash-key of *feature-registry* using (hash-value f)
-                     collect (list (string-downcase (string k))
-                                    (or (feature-description f) "")
-                                    (composed-of-summary f)
-                                    (feature-provider-summary k)))))
-    (if rows
-        (print-table '("FEATURE" "DESCRIPTION" "COMPOSED OF" "PROVIDERS") (sort rows #'string< :key #'first))
-        (format t "  (none registered)~%")))
-  (terpri)
-
-  (format t "Providers:~%")
-  (let ((rows (loop for fname being the hash-key of *providers* using (hash-value providers)
-                     append (mapcar (lambda (p)
-                                      (list (string-downcase (string (provider-name p)))
-                                             (string-downcase (string fname))
-                                             (if (provider-default-p p) "yes" "")
-                                             (or (provider-description p) "")))
-                                    providers))))
-    (if rows
-        (print-table '("PROVIDER" "FOR FEATURE" "DEFAULT" "DESCRIPTION")
-                     (sort rows #'string< :key (lambda (r) (format nil "~a:~a" (second r) (first r)))))
-        (format t "  (none registered)~%")))
-  (terpri)
-
-  (format t "Catalogs:~%")
-  (let ((names (loop for k being the hash-key of *catalogs* collect (string-downcase (string k)))))
-    (if names
-        (dolist (n (sort names #'string<)) (format t "  ~a~%" n))
-        (format t "  (none registered)~%")))
-  (terpri)
-
-  (format t "Action types:~%")
-  (let ((rows (loop for k being the hash-key of *action-types*
-                     collect (list (string-downcase (string k)) (action-type-description k)))))
-    (print-table '("TYPE" "DESCRIPTION") (sort rows #'string< :key #'first)))
-  (terpri)
-
-  (format t "Package backends:~%")
-  (let ((rows (loop for k being the hash-key of *package-backends* using (hash-value b)
-                     collect (list (string-downcase (string k)) (or (backend-description b) "")))))
-    (if rows
-        (print-table '("VIA" "DESCRIPTION") (sort rows #'string< :key #'first))
-        (format t "  (none registered)~%")))
-  (terpri)
-
-  (format t "Service backends:~%")
-  (let ((rows (loop for k being the hash-key of *service-backends* using (hash-value b)
-                     collect (list (string-downcase (string k))
-                                   (string-downcase (string (service-backend-scope b)))
-                                   (if (service-backend-privileged-p b) "yes" "")
-                                   (or (service-backend-description b) "")))))
-    (if rows
-        (print-table '("NAME" "SCOPE" "SUDO" "DESCRIPTION") (sort rows #'string< :key #'first))
-        (format t "  (none registered)~%")))
-  (terpri)
-
-  (format t "Repository backends:~%")
-  (let ((rows (loop for k being the hash-key of *repository-backends* using (hash-value b)
-                     collect (list (string-downcase (string k)) (or (repository-backend-description b) "")))))
-    (if rows
-        (print-table '("METHOD" "DESCRIPTION") (sort rows #'string< :key #'first))
-        (format t "  (none registered)~%")))
-  (terpri)
-
-  (format t "DSL forms:~%")
-  (let ((rows (loop for name being the hash-key of *dsl-forms* using (hash-value entry)
-                    collect (list (string-downcase name) (getf entry :source)))))
-    (if rows
-        (print-table '("FORM" "DEFINED BY") (sort rows #'string< :key #'first))
-        (format t "  (none registered)~%")))
-  (terpri)
-
-  (format t "Facts:~%")
-  (let ((rows (loop for k being the hash-key of *fact-sources* using (hash-value source)
-                    collect (list (string-downcase (string k))
-                                  (princ-to-string (or (fact-source-type source) ""))
-                                  (or (fact-source-doc source) "")
-                                  (or (fact-source-registrant source) "")))))
-    (if rows
-        (print-table '("FACT" "TYPE" "DESCRIPTION" "SOURCE") (sort rows #'string< :key #'first))
-        (format t "  (none registered)~%"))))
+  (format t "~{~a~%~}" (render-list (make-report-context :facts *facts* :opts opts))))
 
 (defun cmd-facts (opts)
   "Print every resolved fact -- after probing and merging the selected
---profile -- one per line, aligned, with its source and confidence. Useful
-for answering \"why did LINACS pick that provider on this machine\" without
-re-deriving it from probes."
+--profile -- as a table with its source and confidence. Useful for answering
+\"why did LINACS pick that provider on this machine\" without re-deriving it
+from probes."
   (bootstrap opts)
   (probe-all-facts)
   (apply-profile (cli-opts-profile opts))
   (apply-platform-override (cli-opts-platform opts))
-  (let* ((pairs (loop for (k v) on *facts* by #'cddr collect (cons k v)))
-         (sorted (sort (copy-list pairs) #'string< :key (lambda (p) (string (car p)))))
-         (key-width (reduce #'max (mapcar (lambda (p) (length (string (car p)))) sorted) :initial-value 0))
-         (val-width (reduce #'max (mapcar (lambda (p) (length (princ-to-string (cdr p)))) sorted) :initial-value 0))
-         (type-width (reduce #'max (mapcar (lambda (p)
-                                              (let ((source (gethash (car p) *fact-sources*)))
-                                                (length (princ-to-string (or (and source (fact-source-type source)) "")))))
-                                            sorted)
-                              :initial-value 0))
-         (confidence-width (length "CONFIDENCE")))
-    (format t "~va  ~va  ~va  ~va  ~a~%"
-            key-width "FACT" val-width "VALUE" type-width "TYPE" confidence-width "CONFIDENCE" "SOURCE")
-    (format t "~va  ~va  ~va  ~va  ~a~%"
-            key-width (make-string key-width :initial-element #\-)
-            val-width (make-string val-width :initial-element #\-)
-            type-width (make-string type-width :initial-element #\-)
-            confidence-width (make-string confidence-width :initial-element #\-)
-            (make-string (reduce #'max (mapcar (lambda (p)
-                                                 (length (princ-to-string
-                                                          (fact-source-display-name
-                                                           (gethash (car p) *fact-objects*)))))
-                                               sorted)
-                                :initial-value 0)
-                         :initial-element #\-))
-    (dolist (p sorted)
-      (let* ((key (car p))
-             (source (gethash key *fact-sources*))
-             (obj (gethash key *fact-objects*))
-             (val-str (princ-to-string (cdr p)))
-             (type-str (princ-to-string (or (and source (fact-source-type source)) "")))
-             (confidence-str (princ-to-string (if obj (fact-confidence obj) :unknown)))
-             (source-str (princ-to-string (fact-source-display-name obj))))
-        (format t "~va  ~va  ~va  ~va  ~a~%"
-                key-width (string key) val-width val-str type-width type-str
-                confidence-width confidence-str source-str)))))
+  (format t "~{~a~%~}" (render-facts (make-report-context :facts *facts* :opts opts))))
 
 (defun fact-source-display-name (fact)
   "A short human-readable source label for FACT's provenance: the
@@ -982,18 +881,37 @@ precedence over the request's own :via."
              ((> (length defaults) 1) "MULTIPLE :DEFAULT T PROVIDERS -- AMBIGUOUS")
              (t "AMBIGUOUS -- needs :via, or mark one :default t")))))))
 
+(defun count-missing-catalog-entries (os &optional (catalogs *catalogs*))
+  "Count canonical keys across every catalog whose distro alist has no
+entry for OS (a keyword like :fedora). Walks *CATALOGS* -- name -> hash
+table (canonical-key -> distro alist) -- so callers must not assume a
+flat list. Distro alist keys are keywords, so the lookup uses OS as-is
+(eql). Returns 0 when OS is :unknown."
+  (if (eq os :unknown)
+      0
+      (let ((missing 0))
+        (maphash (lambda (cat-name entries)
+                   (declare (ignore cat-name))
+                   (maphash (lambda (key distro-alist)
+                              (declare (ignore key))
+                              (unless (assoc os distro-alist)
+                                (incf missing)))
+                            entries))
+                 catalogs)
+        missing)))
+
 (defun cmd-doctor (opts)
   (bootstrap opts)
   (probe-all-facts) (apply-profile (cli-opts-profile opts))
   (apply-platform-override (cli-opts-platform opts))
-  (format t "Diagnostic checks:~%")
-  (let ((checks-passed 0) (checks-warn 0) (checks-failed 0))
+  (let ((checks '()) (checks-passed 0) (checks-warn 0) (checks-failed 0))
     (flet ((log-check (label ok-p &optional detail)
-             (cond (ok-p (incf checks-passed) (format t "  ✓ ~a~%" label))
+             (cond (ok-p (incf checks-passed)
+                         (push (list label :ok nil) checks))
                    (detail (incf checks-warn)
-                           (format t "  ⚠ ~a: ~a~%" label detail))
+                           (push (list label :warn detail) checks))
                    (t (incf checks-failed)
-                       (format t "  ✗ ~a~%" label)))))
+                      (push (list label :fail nil) checks)))))
       (log-check "OS probed" (not (eq (fact :os) :unknown)) (format nil "detected ~a" (fact :os)))
       (log-check "Hostname resolved" (not (eq (fact :hostname) :unknown)) (fact :hostname))
       (log-check "Package manager detected" (not (eq (fact :package-manager) :unknown))
@@ -1030,22 +948,14 @@ precedence over the request's own :via."
           (let ((priv-count (count-if #'action-needs-privilege-p all-actions)))
             (log-check "Package installs requiring privilege" (or (zerop priv-count) (privileged-p))
                        (format nil "~d action(s) will use sudo" priv-count))))
-        (let* ((os (fact :os)) (missing-entries 0))
-          (unless (eq os :unknown)
-            (let ((os-str (string-downcase (string os))))
-              (maphash (lambda (cat-name entries)
-                         (declare (ignore cat-name))
-                         (dolist (e entries)
-                           (unless (assoc os-str e :test #'string=)
-                             (incf missing-entries))))
-                       *catalogs*)))
+        (let ((missing-entries (count-missing-catalog-entries (fact :os))))
           (log-check "Catalog coverage for OS" (zerop missing-entries)
-                     (format nil "~d entries missing for ~(~a~)" missing-entries os))))
-      (format t "~%Environment:~%  OS: ~a~%  Hostname: ~a~%  Privileged: ~a~%~%"
-              (fact :os) (fact :hostname) (privileged-p))
-      (format t "Results: ~d passed, ~d warning(s), ~d failed~%"
-              checks-passed checks-warn checks-failed)
-      (when (> checks-failed 0) (uiop:quit 1)))))
+                     (format nil "~d entries missing for ~(~a~)" missing-entries (fact :os))))))
+    (let ((ctx (make-report-context :facts *facts* :opts opts)))
+      (format t "~{~a~%~}" (render-doctor ctx :checks (nreverse checks)
+                                          :passed checks-passed
+                                          :warn checks-warn :failed checks-failed)))
+    (when (> checks-failed 0) (uiop:quit 1))))
 
 (defun write-file-if-absent (path content)
   "Write CONTENT verbatim to PATH unless it already exists. Existing files
@@ -1118,12 +1028,11 @@ already exists."
   :traits (:prune-explicitly-disabled)
   (package-preference :system))
 "))
-    (format t "Initialized LINACS project at ~a~%" root)
-    (format t "For a fuller multi-machine example (profiles, templates, plugins, stow layout),~%  see the linacs-home project -- a sibling of the linacs repo.~%")))
+    (let ((ctx (make-report-context :facts *facts* :opts opts)))
+      (format t "~{~a~%~}" (render-init ctx :root root :example (cli-opts-example opts))))))
 
 (defun cmd-version (opts)
-  (declare (ignore opts))
-  (format t "linacs ~a~%" (asdf:component-version (asdf:find-system "linacs"))))
+  (format t "~{~a~%~}" (render-version (make-report-context :facts *facts* :opts opts))))
 
 ;;; --- Help system -----------------------------------------------------
 ;;;

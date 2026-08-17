@@ -222,6 +222,7 @@
    #:repository-backend-remove-fn
    #:repository-present-p #:repository-ensure #:repository-remove
    #:resolve-repository-prerequisites
+    #:resolve-package-vias #:resolve-package-via #:*package-preference-chain*
    #:*provenance*
    #:register-provenance
    #:action-provenance
@@ -320,6 +321,7 @@
     #:main
     #:parse-args
     #:cmd-init
+    #:count-missing-catalog-entries
     #:cli-opts
     #:make-cli-opts
     #:cli-opts-root
@@ -341,14 +343,25 @@
     #:report-context-plan #:report-context-facts #:report-context-home #:report-context-opts
     #:*action-verbs* #:action-verb #:action-natural-target
     #:*desktop-display-names* #:desktop-display-name #:fact-display-string #:os-display-string
-    #:fact-label #:facts-snapshot-string #:reason-line
+    #:fact-label #:facts-snapshot-string #:reason-line #:location-display-string
     #:machine-header
     #:blank-line #:rule-line #:summary-line #:next-steps
     #:render-action-line #:status-glyph
+    #:package-via-label #:package-via-display
     #:collect-check-statuses
     #:apply-preview-counts #:render-apply-preview #:render-apply-failed
     #:confirm-apply-preview #:apply-run-failed-p #:apply-confirmation-answer
-    #:*action-conflicts*))
+    #:*action-conflicts*
+    ;; presentation (src/report.lisp, USERUX redesign Phase 3)
+    #:table-lines #:print-table
+    #:render-header #:split-lines #:as-list #:semantic-value-string
+    #:plan-glyph #:apply-result-glyph #:diff-detail-lines
+    #:render-conflict-identity #:render-conflict-line #:list-section
+    #:render-plan #:render-diff #:render-apply #:render-apply-detail
+    #:render-check #:render-explain #:render-graph
+    #:render-list #:render-facts #:render-validate #:render-doctor
+    #:render-init #:render-version
+    #:*dsl-form-signatures* #:structural-form-problems))
 
 (defpackage :linacs.api
   (:use :cl)
